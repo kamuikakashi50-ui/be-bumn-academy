@@ -244,11 +244,16 @@ func (s *AdminService) ListOrders(ctx context.Context, filter repository.OrderFi
 
 // MarkOrderPaid menandai pesanan lunas dari dashboard admin (mis. pembayaran
 // manual yang sudah diverifikasi) sekaligus memberi akses produk.
+//
+// Referensi pembayaran dibuat unik per pesanan karena kolom
+// `orders.payment_reference` memiliki indeks unik parsial — referensi tetap
+// ("admin-manual") akan membuat penandaan lunas kedua gagal.
 func (s *AdminService) MarkOrderPaid(ctx context.Context, orderID string) (*dto.OrderView, error) {
-	if _, err := s.orders.FindByID(ctx, orderID); err != nil {
+	order, err := s.orders.FindByID(ctx, orderID)
+	if err != nil {
 		return nil, err
 	}
-	paid, err := s.orders.MarkPaid(ctx, orderID, "admin-manual")
+	paid, err := s.orders.MarkPaid(ctx, orderID, "admin-manual-"+order.InvoiceNo)
 	if err != nil {
 		return nil, err
 	}
