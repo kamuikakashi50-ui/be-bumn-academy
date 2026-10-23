@@ -1,0 +1,25 @@
+# binaries
+/bin/
+/tmp/
+be-bumn-academy
+migrate
+seed
+
+# env
+.env
+.env.local
+*.env
+
+# test & coverage
+/coverage
+*.out
+*.test
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# logs
+*.log

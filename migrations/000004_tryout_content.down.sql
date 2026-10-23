@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS subtests;
+DROP TABLE IF EXISTS tryout_packages;
+DROP TABLE IF EXISTS questions;

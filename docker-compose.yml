@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ba-postgres
+    environment:
+      POSTGRES_USER: bumn
+      POSTGRES_PASSWORD: bumn
+      POSTGRES_DB: bumn_academy
+    # Parameter tuning agar kuat menghadapi koneksi tryout serentak
+    command:
+      - postgres
+      - -c
+      - max_connections=200
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=128MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - max_worker_processes=8
+    ports:
+      # Port host dibuat non-standar agar tidak bentrok dengan PostgreSQL lokal.
+      # Ubah POSTGRES_HOST_PORT bila ingin memakai 5432.
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bumn -d bumn_academy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ba-redis
+    command:
+      - redis-server
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+    ports:
+      # Port host dibuat non-standar agar tidak bentrok dengan Redis lokal.
+      - "${REDIS_HOST_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ba-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      APP_ENV: production
+      HTTP_PORT: "8080"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: bumn
+      DB_PASSWORD: bumn
+      DB_NAME: bumn_academy
+      DB_SSLMODE: disable
+      DB_MAX_OPEN_CONNS: "80"
+      DB_MAX_IDLE_CONNS: "40"
+      DB_AUTO_MIGRATE: "true"
+      REDIS_ENABLED: "true"
+      REDIS_ADDR: redis:6379
+      REDIS_POOL_SIZE: "60"
+      JWT_SECRET: ganti-dengan-secret-acak-minimal-32-karakter
+      CORS_ALLOWED_ORIGINS: http://localhost:3000
+      SEED_ON_START: "true"
+      # Mentor AI — set AI_PROVIDER=ark + AI_API_KEY di lingkungan host untuk
+      # memakai model sungguhan; default memakai mentor heuristik lokal.
+      AI_ENABLED: "true"
+      AI_PROVIDER: ${AI_PROVIDER:-stub}
+      AI_BASE_URL: ${AI_BASE_URL:-https://ark.ap-southeast.bytepluses.com/api/v3}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-deepseek-v4-flash-260425}
+      AI_DAILY_QUOTA: "120"
+    ports:
+      - "8080:8080"
+    # Beberapa replika di belakang load balancer → skala horizontal.
+    # Jalankan: docker compose up -d --scale api=3
+    deploy:
+      replicas: 1
+    restart: unless-stopped
+
+volumes:
+  pgdata:
