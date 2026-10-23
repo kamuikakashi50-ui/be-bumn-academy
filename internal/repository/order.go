@@ -179,6 +179,37 @@ func (r *OrderRepository) MarkPaid(ctx context.Context, orderID, paymentReferenc
 	return r.FindByID(ctx, orderID)
 }
 
+// SavePaymentIntent menyimpan hasil pembuatan transaksi Snap pada pesanan.
+func (r *OrderRepository) SavePaymentIntent(ctx context.Context, orderID, provider, token, redirectURL string) error {
+	now := time.Now().UTC()
+	result := r.db.WithContext(ctx).Model(&models.Order{}).
+		Where("id = ?", orderID).
+		Updates(map[string]any{
+			"payment_provider":  provider,
+			"snap_token":        token,
+			"snap_redirect_url": redirectURL,
+			"updated_at":        now,
+		})
+	if result.Error != nil {
+		return apperror.Internal(result.Error, "Gagal menyimpan sesi pembayaran.")
+	}
+	return nil
+}
+
+// UpdatePaymentStatus menyimpan status mentah dari penyedia pembayaran.
+func (r *OrderRepository) UpdatePaymentStatus(ctx context.Context, orderID, status string) error {
+	result := r.db.WithContext(ctx).Model(&models.Order{}).
+		Where("id = ?", orderID).
+		Updates(map[string]any{
+			"payment_status": status,
+			"updated_at":     time.Now().UTC(),
+		})
+	if result.Error != nil {
+		return apperror.Internal(result.Error, "Gagal menyimpan status pembayaran.")
+	}
+	return nil
+}
+
 // ExpireOrder menandai pesanan kedaluwarsa/dibatalkan.
 func (r *OrderRepository) ExpireOrder(ctx context.Context, orderID string) (*models.Order, error) {
 	result := r.db.WithContext(ctx).Model(&models.Order{}).

@@ -155,6 +155,9 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 	// Webhook pembayaran (dipanggil server Midtrans, tanpa JWT).
 	r.Post("/webhooks/midtrans", h.billing.MidtransWebhook)
 
+	// Konfigurasi publik Midtrans (dipakai front-end untuk memuat snap.js).
+	r.Get("/midtrans/config", h.billing.MidtransConfig)
+
 	// ------------------------------ peserta -----------------------------
 	r.Group(func(r chi.Router) {
 		r.Use(h.authMid.Required)
@@ -166,6 +169,12 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Get("/orders/{id}", h.billing.GetOrder)
 		r.Post("/orders/{id}/cancel", h.billing.CancelOrder)
 		r.Post("/orders/{id}/pay", h.billing.PayOrder)
+
+		// Pembayaran Midtrans (Snap) + rekonsiliasi status.
+		r.Post("/orders/{id}/payment", h.billing.PaymentIntent)
+		r.Get("/orders/{id}/payment/status", h.billing.PaymentStatus)
+		// Simulator sandbox lokal (hanya aktif bila MIDTRANS_SANDBOX_SIMULATOR).
+		r.Post("/orders/{id}/sandbox/settle", h.billing.SandboxPayment)
 
 		r.Get("/dashboard/summary", h.learning.Dashboard)
 		r.Get("/live-sessions", h.learning.LiveSessions)

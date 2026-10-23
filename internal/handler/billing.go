@@ -104,7 +104,8 @@ func (h *BillingHandler) Enrollments(w http.ResponseWriter, r *http.Request) {
 // MidtransWebhook menangani POST /webhooks/midtrans.
 //
 // Endpoint ini dipanggil server Midtrans (bukan browser), jadi tidak memakai
-// autentikasi JWT. Validasi signature dilakukan bila MIDTRANS_SERVER_KEY diisi.
+// autentikasi JWT. Signature notifikasi diverifikasi dengan Server Key sehingga
+// permintaan palsu ditolak.
 func (h *BillingHandler) MidtransWebhook(w http.ResponseWriter, r *http.Request) {
 	var notif dto.MidtransNotification
 	if err := decodeJSONOptional(w, r, &notif); err != nil {
@@ -113,6 +114,67 @@ func (h *BillingHandler) MidtransWebhook(w http.ResponseWriter, r *http.Request)
 	}
 
 	result, err := h.deps.Billing.HandleWebhook(r.Context(), notif)
+	if err != nil {
+		response.Fail(w, err)
+		return
+	}
+	response.OK(w, result)
+}
+
+// MidtransConfig menangani GET /midtrans/config (publik).
+//
+// Dipakai front-end untuk memuat snap.js dan memutuskan apakah menampilkan
+// tombol bayar Midtrans atau simulator sandbox lokal.
+func (h *BillingHandler) MidtransConfig(w http.ResponseWriter, r *http.Request) {
+	response.OK(w, h.deps.Billing.MidtransConfig())
+}
+
+// PaymentIntent menangani POST /orders/{id}/payment.
+//
+// Membuat sesi pembayaran Midtrans (Snap) untuk sebuah pesanan; `?refresh=true`
+// memaksa pembuatan token baru.
+func (h *BillingHandler) PaymentIntent(w http.ResponseWriter, r *http.Request) {
+	refresh := queryBool(r, "refresh")
+	intent, err := h.deps.Billing.PaymentIntent(
+		r.Context(), middleware.UserID(r.Context()), pathParam(r, "id"), refresh,
+	)
+	if err != nil {
+		response.Fail(w, err)
+		return
+	}
+	response.OK(w, intent)
+}
+
+// PaymentStatus menangani GET /orders/{id}/payment/status.
+//
+// Menyinkronkan status pesanan dengan Midtrans (rekonsiliasi bila notifikasi
+// webhook belum sampai ke server lokal).
+func (h *BillingHandler) PaymentStatus(w http.ResponseWriter, r *http.Request) {
+	order, err := h.deps.Billing.SyncPaymentStatus(
+		r.Context(), middleware.UserID(r.Context()), pathParam(r, "id"),
+	)
+	if err != nil {
+		response.Fail(w, err)
+		return
+	}
+	response.OK(w, order)
+}
+
+// SandboxPayment menangani POST /orders/{id}/sandbox/settle.
+//
+// Simulator pembayaran lokal: mengirim notifikasi tiruan bertanda tangan ke
+// jalur webhook yang sama sehingga alur checkout bisa diuji tanpa kredensial
+// Midtrans maupun URL publik.
+func (h *BillingHandler) SandboxPayment(w http.ResponseWriter, r *http.Request) {
+	var req dto.SandboxPaymentRequest
+	if err := decodeJSON(w, r, &req); err != nil {
+		response.Fail(w, err)
+		return
+	}
+
+	result, err := h.deps.Billing.SandboxSimulate(
+		r.Context(), middleware.UserID(r.Context()), pathParam(r, "id"), req.Outcome,
+	)
 	if err != nil {
 		response.Fail(w, err)
 		return

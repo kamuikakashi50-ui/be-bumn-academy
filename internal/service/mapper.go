@@ -140,6 +140,8 @@ func toOrderView(order models.Order) dto.OrderView {
 		PaidAt:           formatTimePtr(order.PaidAt),
 		ExpiresAt:        formatTimePtr(order.ExpiresAt),
 		PaymentReference: strPtrOrEmpty(order.PaymentReference),
+		PaymentProvider:  order.PaymentProvider,
+		PaymentStatus:    order.PaymentStatus,
 	}
 }
 

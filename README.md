@@ -77,7 +77,7 @@ be-bumn-academy/
 │   ├── handler/        # lapisan HTTP
 │   ├── middleware/     # auth, admin guard, rate limit, logging
 │   ├── models/         # model GORM + tipe kolom JSONB
-│   ├── pkg/            # apperror, bank, logger, password, response, validator
+│   ├── pkg/            # apperror, bank, logger, midtrans, password, response, validator
 │   ├── repository/     # seluruh akses database
 │   ├── router/         # peta seluruh route
 │   ├── seed/           # data demo (data.json dari modul mock front-end)
@@ -164,9 +164,67 @@ Semua endpoint berada di bawah `/api/v1`. Kolom **Akses**: `publik`, `peserta`
 | GET | `/orders` | peserta | riwayat pesanan (paginasi) |
 | GET | `/orders/{id}` | peserta | detail pesanan |
 | POST | `/orders/{id}/cancel` | peserta | batalkan pesanan pending |
-| POST | `/orders/{id}/pay` | peserta | simulasi pembayaran berhasil |
+| POST | `/orders/{id}/pay` | peserta | simulasi pembayaran berhasil (tanpa penyedia) |
+| POST | `/orders/{id}/payment` | peserta | buat sesi pembayaran Midtrans (Snap token) — `?refresh=true` memaksa token baru |
+| GET | `/orders/{id}/payment/status` | peserta | sinkronkan status pesanan dengan Midtrans |
+| POST | `/orders/{id}/sandbox/settle` | peserta | simulator sandbox lokal (`settlement`/`pending`/`expire`/`deny`) |
+| GET | `/midtrans/config` | publik | konfigurasi publik Midtrans (client key, snap.js, mode) |
 | GET | `/enrollments` | peserta | produk yang dimiliki |
-| POST | `/webhooks/midtrans` | publik | callback pembayaran (idempotent) |
+| POST | `/webhooks/midtrans` | publik | callback pembayaran (idempotent, **wajib signature sah**) |
+
+### Pembayaran Midtrans (Snap)
+
+Alur pembayaran berbayar:
+
+1. `POST /orders` → pesanan `pending` (harga dihitung server, kuota voucher dicatat).
+2. `POST /orders/{id}/payment` → backend memanggil
+   `POST {snap}/v1/transactions` memakai Server Key dan mengembalikan
+   `snapToken` + `snapRedirectUrl` (disimpan di kolom `orders.snap_token`).
+   Rincian item (`item_details`) selalu berjumlah tepat sama dengan
+   `gross_amount`: produk, diskon (negatif), dan biaya metode bila ada.
+3. Front-end menampilkan halaman pembayaran lewat `snap.js`
+   (`window.snap.pay(token, …)`) atau mengalihkan ke `snapRedirectUrl`.
+4. Midtrans mengirim `POST /webhooks/midtrans`. Backend:
+   - memverifikasi `signature_key` = `SHA512(order_id + status_code +
+     gross_amount + ServerKey)` secara constant-time (permintaan palsu → 401),
+   - memetakan status: `settlement`/`capture` → **lunas + akses produk**,
+     `pending` → hanya dicatat, `expire`/`cancel`/`deny`/`failure` →
+     kedaluwarsa, `refund`/`partial_refund` → dicatat (pesanan tetap lunas),
+   - idempotent: notifikasi ganda tidak memberi akses dobel.
+5. `GET /orders/{id}/payment/status` menjadi jaring pengaman: backend menanyakan
+   status ke Core API (`GET /v2/{order_id}/status`) lalu menerapkan pemetaan yang
+   sama. Berguna saat notifikasi tidak bisa menjangkau server (mis. backend di
+   localhost tanpa tunnel).
+
+**Simulator sandbox lokal.** Bila `MIDTRANS_SERVER_KEY` kosong, `POST
+/orders/{id}/payment` mengembalikan `mode: "simulator"` dan front-end
+menampilkan tombol simulasi. `POST /orders/{id}/sandbox/settle` menyusun
+notifikasi tiruan **bertanda tangan kunci sandbox** dan mengirimkannya ke
+`HandleWebhook` — jalur verifikasi signature, pelunasan, dan pemberian akses
+benar-benar dijalankan tanpa akun Midtrans maupun URL publik. Simulator aktif
+hanya bila `MIDTRANS_SANDBOX_SIMULATOR=true` dan `MIDTRANS_IS_PRODUCTION=false`.
+
+**Menghubungkan Midtrans sandbox asli.**
+
+1. Daftar akun Midtrans → ambil **Server Key** & **Client Key** mode Sandbox.
+2. Isi `.env` (atau env host untuk Docker):
+   ```env
+   MIDTRANS_SERVER_KEY=SB-Mid-server-xxxxxxxxxxxx
+   MIDTRANS_CLIENT_KEY=SB-Mid-client-xxxxxxxxxxxx
+   MIDTRANS_IS_PRODUCTION=false
+   MIDTRANS_SANDBOX_SIMULATOR=false   # opsional; matikan agar murni Snap
+   FRONTEND_BASE_URL=http://localhost:3000
+   ```
+3. Di MAP: **Settings → Configuration**, isi *Payment Notification URL* dengan
+   `https://<domain-publik>/api/v1/webhooks/midtrans` (butuh tunnel seperti ngrok
+   bila backend masih di localhost) dan *Finish/Unfinish/Error Redirect URL* ke
+   `http://localhost:3000/dashboard/pembayaran`.
+4. Uji di sandbox: buat pesanan → tekan **Bayar dengan Midtrans** → pada halaman
+   Snap gunakan menu **Simulator** untuk menandai pembayaran berhasil. Midtrans
+   lalu memanggil webhook; status pesanan menjadi `paid` dan akses produk terbuka.
+
+> Status tidak terbarui? Tekan **Cek status pembayaran** di halaman pembayaran —
+> backend akan menanyakan status langsung ke Midtrans (Core API).
 
 ### Mesin tryout
 
@@ -526,6 +584,11 @@ make loadtest    # uji tryout serentak
 Mencakup perhitungan skor, pemetaan DTO, tipe kolom JSONB, rate limiter,
 middleware auth (401/403), parser import soal, dan helper error.
 
+Ditambah pengujian integrasi Midtrans (`internal/pkg/midtrans`): rumus
+`signature_key` SHA512, penolakan signature palsu, pemetaan metode pembayaran ke
+kanal Snap, header `Authorization` Basic, payload transaksi, dan penerjemahan
+galat dari API Midtrans (memakai `httptest`).
+
 Ditambah pengujian lapisan mentor AI: urutan kekuatan/kelemahan subtes,
 perhitungan kesiapan, pemotongan konteks, netralisasi prompt injection,
 pembersihan balasan model, serta batas jumlah butir analisis.
@@ -533,7 +596,8 @@ pembersihan balasan model, serta batas jumlah butir analisis.
 ```
 ok  internal/ai         ok  internal/cache      ok  internal/middleware
 ok  internal/models     ok  internal/pkg/apperror   ok  internal/pkg/bank
-ok  internal/pkg/password   ok  internal/pkg/validator   ok  internal/service
+ok  internal/pkg/midtrans   ok  internal/pkg/password   ok  internal/pkg/validator
+ok  internal/service
 ```
 
 ### Smoke test
@@ -653,6 +717,13 @@ Seluruh variabel ada di `.env.example`. Yang paling sering disesuaikan:
 | `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST` | `30` / `60` | batas per pengguna/IP |
 | `PASSING_THRESHOLD` | `70` | ambang batas kelulusan simulasi |
 | `REFERRAL_DISCOUNT_PERCENT` | `10` | diskon kode referral |
+| `MIDTRANS_SERVER_KEY` | — | Server Key Midtrans (kosong = simulator sandbox lokal) |
+| `MIDTRANS_CLIENT_KEY` | — | Client Key Midtrans (dipakai snap.js di browser) |
+| `MIDTRANS_IS_PRODUCTION` | `false` | `true` untuk kredensial produksi |
+| `MIDTRANS_SANDBOX_SIMULATOR` | `true` | simulator pembayaran lokal (wajib `false` di produksi) |
+| `MIDTRANS_TIMEOUT` | `20s` | batas waktu permintaan ke Midtrans |
+| `MIDTRANS_SNAP_BASE_URL` / `MIDTRANS_CORE_BASE_URL` | — | override domain Midtrans (pengujian/proxy) |
+| `FRONTEND_BASE_URL` | `http://localhost:3000` | basis URL pengalihan Snap |
 | `SEED_ON_START` | `true` | matikan di produksi |
 | `AI_PROVIDER` | `stub` | `stub` (lokal), `ark`, atau `openai` |
 | `AI_BASE_URL` | Ark ap-southeast-1 | endpoint kompatibel OpenAI |

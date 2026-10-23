@@ -33,8 +33,15 @@ type Order struct {
 	Method           string      `gorm:"column:method;not null;default:''" json:"method"`
 	Status           OrderStatus `gorm:"column:status;not null;default:pending" json:"status"`
 	PaymentReference *string     `gorm:"column:payment_reference" json:"paymentReference,omitempty"`
-	PaidAt           *time.Time  `gorm:"column:paid_at" json:"paidAt,omitempty"`
-	ExpiresAt        *time.Time  `gorm:"column:expires_at" json:"expiresAt,omitempty"`
+	// PaymentProvider menandai jalur pembayaran yang dipakai ("midtrans").
+	PaymentProvider string `gorm:"column:payment_provider;not null;default:''" json:"paymentProvider,omitempty"`
+	// PaymentStatus menyimpan status mentah dari penyedia pembayaran.
+	PaymentStatus string `gorm:"column:payment_status;not null;default:''" json:"paymentStatus,omitempty"`
+	// SnapToken & SnapRedirectURL diisi setelah transaksi Snap dibuat.
+	SnapToken       *string    `gorm:"column:snap_token" json:"-"`
+	SnapRedirectURL *string    `gorm:"column:snap_redirect_url" json:"-"`
+	PaidAt          *time.Time `gorm:"column:paid_at" json:"paidAt,omitempty"`
+	ExpiresAt       *time.Time `gorm:"column:expires_at" json:"expiresAt,omitempty"`
 }
 
 // TableName menetapkan nama tabel.

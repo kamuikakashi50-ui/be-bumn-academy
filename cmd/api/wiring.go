@@ -8,6 +8,7 @@ import (
 	"github.com/bumn-academy/be-bumn-academy/internal/auth"
 	"github.com/bumn-academy/be-bumn-academy/internal/cache"
 	"github.com/bumn-academy/be-bumn-academy/internal/config"
+	"github.com/bumn-academy/be-bumn-academy/internal/pkg/midtrans"
 	"github.com/bumn-academy/be-bumn-academy/internal/repository"
 	"github.com/bumn-academy/be-bumn-academy/internal/router"
 	"github.com/bumn-academy/be-bumn-academy/internal/service"
@@ -38,7 +39,20 @@ func buildRouter(
 	// Service.
 	authService := service.NewAuthService(users, manager, cfg)
 	catalogService := service.NewCatalogService(catalog, enrollments, cacheLayer, cfg)
-	billingService := service.NewBillingService(catalog, orders, enrollments, users, learning, cfg)
+
+	// Klien Midtrans (Snap) — dipakai billing untuk pembuatan sesi pembayaran,
+	// rekonsiliasi status, dan verifikasi signature notifikasi.
+	midtransClient := midtrans.New(midtrans.Config{
+		ServerKey:    cfg.Business.MidtransServerKey,
+		ClientKey:    cfg.Business.MidtransClientKey,
+		IsProduction: cfg.Business.MidtransIsProduction,
+		Timeout:      cfg.Business.MidtransTimeout,
+		SnapBaseURL:  cfg.Business.MidtransSnapBaseURL,
+		CoreBaseURL:  cfg.Business.MidtransCoreBaseURL,
+	})
+	logger.Info("integrasi pembayaran disiapkan", "provider", midtransClient.Describe())
+
+	billingService := service.NewBillingService(catalog, orders, enrollments, users, learning, midtransClient, cfg)
 	tryoutService := service.NewTryoutService(tryouts, sessions, attempts, enrollments, cacheLayer, cfg)
 	learningService := service.NewLearningService(learning, attempts, enrollments, tryoutService, cacheLayer, cfg)
 	adminService := service.NewAdminService(

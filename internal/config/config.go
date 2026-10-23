@@ -140,6 +140,35 @@ type BusinessConfig struct {
 	MidtransServerKey       string
 	MidtransClientKey       string
 	MidtransIsProduction    bool
+	// MidtransSandboxSimulator mengaktifkan endpoint simulasi pembayaran lokal
+	// (meniru notifikasi Midtrans) agar alur checkout bisa diuji tanpa akun
+	// Midtrans maupun URL publik. Otomatis nonaktif di produksi.
+	MidtransSandboxSimulator bool
+	// MidtransTimeout membatasi durasi permintaan ke API Midtrans.
+	MidtransTimeout time.Duration
+	// MidtransSnapBaseURL & MidtransCoreBaseURL mengarahkan permintaan ke domain
+	// lain (mis. mock server saat pengujian). Kosong = domain resmi Midtrans.
+	MidtransSnapBaseURL string
+	MidtransCoreBaseURL string
+	// FrontendBaseURL dipakai untuk URL pengalihan Snap (finish/unfinish/error).
+	FrontendBaseURL string
+}
+
+// MidtransEnabled menandakan kredensial Midtrans sudah tersedia.
+func (c *Config) MidtransEnabled() bool {
+	return strings.TrimSpace(c.Business.MidtransServerKey) != ""
+}
+
+// SandboxSimulatorAllowed menandakan endpoint simulator pembayaran boleh dipakai.
+//
+// Dua pengaman: (1) harus diaktifkan eksplisit lewat MIDTRANS_SANDBOX_SIMULATOR,
+// dan (2) otomatis nonaktif bila kredensial Midtrans produksi dipakai
+// (MIDTRANS_IS_PRODUCTION=true), karena pada mode itu pembayaran harus nyata.
+func (c *Config) SandboxSimulatorAllowed() bool {
+	if c.Business.MidtransIsProduction {
+		return false
+	}
+	return c.Business.MidtransSandboxSimulator
 }
 
 // SeedConfig mengatur penyisipan data demo.
@@ -215,11 +244,16 @@ func Load() (*Config, error) {
 			Burst: getInt("RATE_LIMIT_BURST", 60),
 		},
 		Business: BusinessConfig{
-			ReferralDiscountPercent: getInt("REFERRAL_DISCOUNT_PERCENT", 10),
-			PassingThreshold:        getInt("PASSING_THRESHOLD", 70),
-			MidtransServerKey:       getEnv("MIDTRANS_SERVER_KEY", ""),
-			MidtransClientKey:       getEnv("MIDTRANS_CLIENT_KEY", ""),
-			MidtransIsProduction:    getBool("MIDTRANS_IS_PRODUCTION", false),
+			ReferralDiscountPercent:  getInt("REFERRAL_DISCOUNT_PERCENT", 10),
+			PassingThreshold:         getInt("PASSING_THRESHOLD", 70),
+			MidtransServerKey:        getEnv("MIDTRANS_SERVER_KEY", ""),
+			MidtransClientKey:        getEnv("MIDTRANS_CLIENT_KEY", ""),
+			MidtransIsProduction:     getBool("MIDTRANS_IS_PRODUCTION", false),
+			MidtransSandboxSimulator: getBool("MIDTRANS_SANDBOX_SIMULATOR", true),
+			MidtransTimeout:          getDuration("MIDTRANS_TIMEOUT", 20*time.Second),
+			MidtransSnapBaseURL:      getEnv("MIDTRANS_SNAP_BASE_URL", ""),
+			MidtransCoreBaseURL:      getEnv("MIDTRANS_CORE_BASE_URL", ""),
+			FrontendBaseURL:          strings.TrimRight(getEnv("FRONTEND_BASE_URL", "http://localhost:3000"), "/"),
 		},
 		Seed: SeedConfig{
 			OnStart: getBool("SEED_ON_START", true),

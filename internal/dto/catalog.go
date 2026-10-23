@@ -97,6 +97,61 @@ type OrderView struct {
 	PaidAt           string `json:"paidAt,omitempty"`
 	ExpiresAt        string `json:"expiresAt,omitempty"`
 	PaymentReference string `json:"paymentReference,omitempty"`
+	// PaymentProvider & PaymentStatus menjelaskan jalur pembayaran yang dipakai.
+	PaymentProvider string `json:"paymentProvider,omitempty"`
+	PaymentStatus   string `json:"paymentStatus,omitempty"`
+}
+
+// PaymentIntentResponse adalah hasil pembuatan sesi pembayaran sebuah pesanan.
+//
+// Bila `enabled` bernilai false, kredensial Midtrans belum diisi sehingga
+// front-end menampilkan simulator sandbox lokal (`sandboxSimulator`).
+type PaymentIntentResponse struct {
+	OrderID          string   `json:"orderId"`
+	InvoiceNo        string   `json:"invoiceNo"`
+	Status           string   `json:"status"`
+	Total            int64    `json:"total"`
+	Provider         string   `json:"provider"`
+	Mode             string   `json:"mode"`
+	Enabled          bool     `json:"enabled"`
+	IsProduction     bool     `json:"isProduction"`
+	SnapToken        string   `json:"snapToken,omitempty"`
+	SnapRedirectURL  string   `json:"snapRedirectUrl,omitempty"`
+	ClientKey        string   `json:"clientKey,omitempty"`
+	SnapScriptURL    string   `json:"snapScriptUrl,omitempty"`
+	ExpiresAt        string   `json:"expiresAt,omitempty"`
+	EnabledPayments  []string `json:"enabledPayments,omitempty"`
+	SandboxSimulator bool     `json:"sandboxSimulator"`
+	Instructions     []string `json:"instructions"`
+}
+
+// MidtransConfigResponse adalah konfigurasi publik Midtrans untuk front-end.
+type MidtransConfigResponse struct {
+	Enabled          bool   `json:"enabled"`
+	IsProduction     bool   `json:"isProduction"`
+	ClientKey        string `json:"clientKey,omitempty"`
+	SnapScriptURL    string `json:"snapScriptUrl"`
+	SandboxSimulator bool   `json:"sandboxSimulator"`
+	Message          string `json:"message"`
+}
+
+// SandboxPaymentRequest adalah payload simulator pembayaran lokal.
+//
+// `outcome` meniru status yang dikirim Midtrans: settlement (berhasil),
+// pending (menunggu), expire (kedaluwarsa), deny (ditolak FDS).
+type SandboxPaymentRequest struct {
+	Outcome string `json:"outcome" validate:"required,oneof=settlement pending expire deny"`
+}
+
+// SandboxPaymentResponse adalah balasan simulator pembayaran lokal.
+type SandboxPaymentResponse struct {
+	OrderID       string    `json:"orderId"`
+	InvoiceNo     string    `json:"invoiceNo"`
+	Outcome       string    `json:"outcome"`
+	SignatureKey  string    `json:"signatureKey"`
+	Order         OrderView `json:"order"`
+	WebhookStatus string    `json:"webhookStatus"`
+	Message       string    `json:"message"`
 }
 
 // PayOrderResponse adalah balasan saat pesanan ditandai lunas.
