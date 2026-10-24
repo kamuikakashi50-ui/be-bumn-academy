@@ -26,8 +26,13 @@ WORKDIR /app
 COPY --from=builder /out/api /app/api
 COPY --from=builder /out/migrate /app/migrate
 COPY --from=builder /out/seed /app/seed
+# Media pembelajaran (video pelajaran) yang disajikan pada /api/v1/media/*.
+COPY --from=builder /src/media /app/media
 
 USER app
+
+# Direktori berkas media yang dilayani backend.
+ENV MEDIA_DIR=/app/media
 
 EXPOSE 8080
 

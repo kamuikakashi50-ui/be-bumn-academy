@@ -70,6 +70,8 @@ services:
     environment:
       APP_ENV: production
       HTTP_PORT: "8080"
+      # Berkas media ruang kelas disalin ke /app/media saat build image.
+      MEDIA_DIR: /app/media
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_USER: bumn

@@ -77,13 +77,15 @@ be-bumn-academy/
 │   ├── handler/        # lapisan HTTP
 │   ├── middleware/     # auth, admin guard, rate limit, logging
 │   ├── models/         # model GORM + tipe kolom JSONB
-│   ├── pkg/            # apperror, bank, logger, midtrans, password, response, validator
+│   ├── pkg/            # apperror, bank, ebook (generator PDF), logger, midtrans,
+│   │                   # password, response, validator
 │   ├── repository/     # seluruh akses database
 │   ├── router/         # peta seluruh route
 │   ├── seed/           # data demo (data.json dari modul mock front-end)
 │   └── service/        # aturan bisnis
+├── media/              # berkas media ruang kelas (video MP4 + poster)
 ├── migrations/         # SQL berversi (kompatibel penamaan golang-migrate)
-└── scripts/            # smoke-test.sh + loadtest.go
+└── scripts/            # smoke-test.sh, loadtest.go, generate-media.sh
 ```
 
 Alur dependensi satu arah: `handler → service → repository → database`.
@@ -112,10 +114,18 @@ bisa dijalankan dengan `migrate` CLI bila tim memakai tooling tersebut.
 | 006 | live_sessions, recordings, session_reminders, broadcast_logs |
 | 007 | sequence nomor invoice |
 | 008 | attempt_analyses, ai_conversations, ai_messages, ai_usage_counters |
+| 009 | kolom Midtrans pada orders (payment_provider/status/snap_token/redirect) |
+| 010 | course_modules, lessons, lesson_progress (ruang kelas digital) |
 
 Data demo di-embed dari `internal/seed/data.json` yang dihasilkan dari modul mock
 front-end (45 soal, 5 paket tryout, 4 produk, 4 program, 3 voucher, 6 rekaman),
 sehingga angka soal/menit pada kartu tryout **sama persis** dengan front-end.
+
+Materi ruang kelas digital diambil dari `internal/seed/classroom.json` (8 modul,
+15 materi) dengan tautan video mengarah ke berkas di `media/lessons/`. Berkas itu
+dibuat oleh `scripts/generate-media.sh` (Pillow merender slide, ffmpeg mengemas
+MP4 H.264 1280×720 + poster) sehingga peserta benar-benar memutar video asli.
+Direktori media dilayani pada `/api/v1/media/*` (lihat `MEDIA_DIR`).
 
 ### Akun demo
 
@@ -153,7 +163,23 @@ Semua endpoint berada di bawah `/api/v1`. Kolom **Akses**: `publik`, `peserta`
 | GET | `/live-sessions` | peserta | jadwal live + status pengingat |
 | POST | `/live-sessions/{id}/reminder` | peserta | nyalakan/matikan pengingat |
 | GET | `/recordings` | peserta | rekaman (filter `category`, `search`) |
-| GET | `/dashboard/summary` | peserta | ringkasan progres, tren skor, jadwal |
+| GET | `/dashboard/summary` | peserta | ringkasan progres, tren skor, jadwal (+ `continueLearning`) |
+
+### Ruang kelas digital
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| GET | `/classroom` | peserta | daftar kelas yang dimiliki + ringkasan progres |
+| GET | `/classroom/courses/{slug}` | peserta | modul, materi, dan urutan materi satu kelas |
+| GET | `/classroom/lessons/{id}` | peserta | detail materi (+ navigasi sebelumnya/berikutnya) |
+| POST | `/classroom/lessons/{id}/progress` | peserta | simpan posisi menonton / tandai selesai |
+| GET | `/classroom/lessons/{id}/ebook` | peserta | e-book PDF (dibuat dari isi materi; `?download=1` memaksa unduhan) |
+| GET | `/media/*` | publik | berkas media pembelajaran (MP4/poster) dengan dukungan HTTP Range |
+
+Aturan progres: posisi dibatasi oleh durasi materi, persentase dihitung ulang di
+server, materi ditandai selesai otomatis pada >= 90% (atau eksplisit), dan status
+selesai bersifat menetap. Semua endpoint kelas memerlukan kepemilikan produk
+(`403` bila belum).
 
 ### Pembelian
 
@@ -269,6 +295,10 @@ hanya bila `MIDTRANS_SANDBOX_SIMULATOR=true` dan `MIDTRANS_IS_PRODUCTION=false`.
 | GET/POST | `/admin/vouchers`, PATCH/DELETE `/admin/vouchers/{code}` | CRUD voucher |
 | POST | `/admin/broadcast` | broadcast WhatsApp ke segmen peserta |
 | GET | `/admin/broadcasts` | riwayat broadcast |
+| GET/POST | `/admin/classroom/modules` | daftar & tambah modul ruang kelas |
+| PATCH/DELETE | `/admin/classroom/modules/{id}` | ubah/hapus modul (cascade materi) |
+| GET/POST | `/admin/classroom/lessons` | daftar & tambah materi (video/e-book) |
+| PATCH/DELETE | `/admin/classroom/lessons/{id}` | ubah/hapus materi |
 
 ### Kesehatan
 
@@ -724,6 +754,7 @@ Seluruh variabel ada di `.env.example`. Yang paling sering disesuaikan:
 | `MIDTRANS_TIMEOUT` | `20s` | batas waktu permintaan ke Midtrans |
 | `MIDTRANS_SNAP_BASE_URL` / `MIDTRANS_CORE_BASE_URL` | — | override domain Midtrans (pengujian/proxy) |
 | `FRONTEND_BASE_URL` | `http://localhost:3000` | basis URL pengalihan Snap |
+| `MEDIA_DIR` | `./media` | direktori berkas media ruang kelas (`/app/media` di Docker) |
 | `SEED_ON_START` | `true` | matikan di produksi |
 | `AI_PROVIDER` | `stub` | `stub` (lokal), `ark`, atau `openai` |
 | `AI_BASE_URL` | Ark ap-southeast-1 | endpoint kompatibel OpenAI |

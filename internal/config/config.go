@@ -57,6 +57,9 @@ type AIConfig struct {
 type AppConfig struct {
 	Env  string
 	Name string
+	// MediaDir adalah direktori berkas media (video & e-book) yang disajikan
+	// backend pada /api/v1/media/*.
+	MediaDir string
 }
 
 // HTTPConfig berisi pengaturan server HTTP.
@@ -193,8 +196,9 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		App: AppConfig{
-			Env:  getEnv("APP_ENV", "development"),
-			Name: getEnv("APP_NAME", "be-bumn-academy"),
+			Env:      getEnv("APP_ENV", "development"),
+			Name:     getEnv("APP_NAME", "be-bumn-academy"),
+			MediaDir: getEnv("MEDIA_DIR", "./media"),
 		},
 		HTTP: HTTPConfig{
 			Port:            getEnv("HTTP_PORT", "8080"),

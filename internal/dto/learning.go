@@ -52,6 +52,9 @@ type DashboardSummary struct {
 	RecentAttempts   []AttemptView     `json:"recentAttempts"`
 	UpcomingLive     []LiveSessionView `json:"upcomingLive"`
 	ScoreTrend       []ScoreTrendPoint `json:"scoreTrend"`
+	// ContinueLearning berisi pelajaran ruang kelas yang terakhir dibuka dan
+	// belum selesai (dipakai kartu "lanjutkan belajar").
+	ContinueLearning []LessonRefView `json:"continueLearning"`
 }
 
 // ScoreTrendPoint adalah satu titik tren skor.

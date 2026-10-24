@@ -24,13 +24,14 @@ const maxBodyBytes = 1 << 20 // 1 MiB
 
 // Deps mengumpulkan seluruh service yang dipakai handler.
 type Deps struct {
-	Auth     *service.AuthService
-	Catalog  *service.CatalogService
-	Billing  *service.BillingService
-	Tryout   *service.TryoutService
-	Learning *service.LearningService
-	Admin    *service.AdminService
-	Mentor   *service.MentorService
+	Auth      *service.AuthService
+	Catalog   *service.CatalogService
+	Billing   *service.BillingService
+	Tryout    *service.TryoutService
+	Learning  *service.LearningService
+	Classroom *service.ClassroomService
+	Admin     *service.AdminService
+	Mentor    *service.MentorService
 }
 
 // decodeJSON membaca body JSON dan memvalidasi struct tujuan.

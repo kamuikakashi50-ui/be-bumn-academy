@@ -25,25 +25,27 @@ type Options struct {
 	Manager *auth.Manager
 	Version string
 
-	AuthService     *service.AuthService
-	CatalogService  *service.CatalogService
-	BillingService  *service.BillingService
-	TryoutService   *service.TryoutService
-	LearningService *service.LearningService
-	AdminService    *service.AdminService
-	MentorService   *service.MentorService
+	AuthService      *service.AuthService
+	CatalogService   *service.CatalogService
+	BillingService   *service.BillingService
+	TryoutService    *service.TryoutService
+	LearningService  *service.LearningService
+	ClassroomService *service.ClassroomService
+	AdminService     *service.AdminService
+	MentorService    *service.MentorService
 }
 
 // New menyusun router utama aplikasi.
 func New(opts Options) http.Handler {
 	deps := &handler.Deps{
-		Auth:     opts.AuthService,
-		Catalog:  opts.CatalogService,
-		Billing:  opts.BillingService,
-		Tryout:   opts.TryoutService,
-		Learning: opts.LearningService,
-		Admin:    opts.AdminService,
-		Mentor:   opts.MentorService,
+		Auth:      opts.AuthService,
+		Catalog:   opts.CatalogService,
+		Billing:   opts.BillingService,
+		Tryout:    opts.TryoutService,
+		Learning:  opts.LearningService,
+		Classroom: opts.ClassroomService,
+		Admin:     opts.AdminService,
+		Mentor:    opts.MentorService,
 	}
 
 	authHandler := handler.NewAuthHandler(deps)
@@ -51,9 +53,11 @@ func New(opts Options) http.Handler {
 	billingHandler := handler.NewBillingHandler(deps)
 	tryoutHandler := handler.NewTryoutHandler(deps)
 	learningHandler := handler.NewLearningHandler(deps)
+	classroomHandler := handler.NewClassroomHandler(deps)
 	adminHandler := handler.NewAdminHandler(deps)
 	aiHandler := handler.NewAIHandler(deps)
 	healthHandler := handler.NewHealthHandler(opts.DB, opts.Cache, opts.Version)
+	mediaHandler := handler.NewMediaHandler(opts.Config.App.MediaDir)
 
 	authMiddleware := middleware.NewAuth(opts.Manager)
 
@@ -83,14 +87,16 @@ func New(opts Options) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.RateLimit(opts.Limiter))
 		registerRoutes(r, routeHandlers{
-			auth:     authHandler,
-			catalog:  catalogHandler,
-			billing:  billingHandler,
-			tryout:   tryoutHandler,
-			learning: learningHandler,
-			admin:    adminHandler,
-			ai:       aiHandler,
-			authMid:  authMiddleware,
+			auth:      authHandler,
+			catalog:   catalogHandler,
+			billing:   billingHandler,
+			tryout:    tryoutHandler,
+			learning:  learningHandler,
+			classroom: classroomHandler,
+			media:     mediaHandler,
+			admin:     adminHandler,
+			ai:        aiHandler,
+			authMid:   authMiddleware,
 		})
 	})
 
@@ -107,14 +113,16 @@ func New(opts Options) http.Handler {
 
 // routeHandlers mengumpulkan handler agar pemanggilan registerRoutes ringkas.
 type routeHandlers struct {
-	auth     *handler.AuthHandler
-	catalog  *handler.CatalogHandler
-	billing  *handler.BillingHandler
-	tryout   *handler.TryoutHandler
-	learning *handler.LearningHandler
-	admin    *handler.AdminHandler
-	ai       *handler.AIHandler
-	authMid  *middleware.Auth
+	auth      *handler.AuthHandler
+	catalog   *handler.CatalogHandler
+	billing   *handler.BillingHandler
+	tryout    *handler.TryoutHandler
+	learning  *handler.LearningHandler
+	classroom *handler.ClassroomHandler
+	media     *handler.MediaHandler
+	admin     *handler.AdminHandler
+	ai        *handler.AIHandler
+	authMid   *middleware.Auth
 }
 
 func writeJSON(w http.ResponseWriter, status int, body string) {
@@ -181,6 +189,13 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Post("/live-sessions/{id}/reminder", h.learning.ToggleReminder)
 		r.Get("/recordings", h.learning.Recordings)
 
+		// Ruang kelas digital: materi, progres menonton/membaca, dan e-book.
+		r.Get("/classroom", h.classroom.Courses)
+		r.Get("/classroom/courses/{slug}", h.classroom.Course)
+		r.Get("/classroom/lessons/{id}", h.classroom.Lesson)
+		r.Post("/classroom/lessons/{id}/progress", h.classroom.SaveProgress)
+		r.Get("/classroom/lessons/{id}/ebook", h.classroom.Ebook)
+
 		// Mesin tryout.
 		r.Post("/tryouts/{id}/sessions", h.tryout.StartSession)
 		r.Get("/tryout-sessions/{id}", h.tryout.GetSession)
@@ -203,6 +218,10 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 	// Status mentor AI bisa dilihat tamu agar UI bisa menyembunyikan panel
 	// ketika fitur belum siap.
 	r.Get("/ai/status", h.ai.Status)
+
+	// Media pembelajaran (video & e-book) — publik agar dapat dimuat langsung
+	// oleh elemen <video>/<iframe> di browser tanpa header khusus.
+	r.Get("/media/*", h.media.Serve)
 
 	// ------------------------------- admin ------------------------------
 	r.Route("/admin", func(r chi.Router) {
@@ -236,5 +255,15 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 
 		r.Post("/broadcast", h.admin.Broadcast)
 		r.Get("/broadcasts", h.admin.ListBroadcasts)
+
+		// Ruang kelas digital: CRUD modul & pelajaran.
+		r.Get("/classroom/modules", h.classroom.AdminModules)
+		r.Post("/classroom/modules", h.classroom.CreateModule)
+		r.Patch("/classroom/modules/{id}", h.classroom.UpdateModule)
+		r.Delete("/classroom/modules/{id}", h.classroom.DeleteModule)
+		r.Get("/classroom/lessons", h.classroom.AdminLessons)
+		r.Post("/classroom/lessons", h.classroom.CreateLesson)
+		r.Patch("/classroom/lessons/{id}", h.classroom.UpdateLesson)
+		r.Delete("/classroom/lessons/{id}", h.classroom.DeleteLesson)
 	})
 }

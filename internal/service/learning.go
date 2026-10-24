@@ -17,6 +17,7 @@ type LearningService struct {
 	attempts    *repository.AttemptRepository
 	enrollments *repository.EnrollmentRepository
 	tryouts     *TryoutService
+	classroom   *ClassroomService
 	cache       *cache.Cache
 	cfg         *config.Config
 }
@@ -27,6 +28,7 @@ func NewLearningService(
 	attempts *repository.AttemptRepository,
 	enrollments *repository.EnrollmentRepository,
 	tryouts *TryoutService,
+	classroom *ClassroomService,
 	cacheLayer *cache.Cache,
 	cfg *config.Config,
 ) *LearningService {
@@ -35,6 +37,7 @@ func NewLearningService(
 		attempts:    attempts,
 		enrollments: enrollments,
 		tryouts:     tryouts,
+		classroom:   classroom,
 		cache:       cacheLayer,
 		cfg:         cfg,
 	}
@@ -154,6 +157,16 @@ func (s *LearningService) Dashboard(ctx context.Context, userID string) (*dto.Da
 		return nil, err
 	}
 
+	// Pelajaran terakhir yang belum selesai di ruang kelas (bila ada).
+	continueLearning := []dto.LessonRefView{}
+	if s.classroom != nil {
+		items, err := s.classroom.ContinueLearning(ctx, userID, 3)
+		if err != nil {
+			return nil, err
+		}
+		continueLearning = items
+	}
+
 	return &dto.DashboardSummary{
 		TotalAttempts:    int(stats.TotalAttempts),
 		AverageScore:     int(stats.AverageScore + 0.5),
@@ -167,5 +180,6 @@ func (s *LearningService) Dashboard(ctx context.Context, userID string) (*dto.Da
 		RecentAttempts:   recent,
 		UpcomingLive:     live,
 		ScoreTrend:       trendPoints,
+		ContinueLearning: continueLearning,
 	}, nil
 }

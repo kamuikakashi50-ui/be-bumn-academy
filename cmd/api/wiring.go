@@ -34,6 +34,7 @@ func buildRouter(
 	sessions := repository.NewSessionRepository(db)
 	attempts := repository.NewAttemptRepository(db)
 	learning := repository.NewLearningRepository(db)
+	classroomRepo := repository.NewClassroomRepository(db)
 	aiRepo := repository.NewAIRepository(db)
 
 	// Service.
@@ -54,7 +55,8 @@ func buildRouter(
 
 	billingService := service.NewBillingService(catalog, orders, enrollments, users, learning, midtransClient, cfg)
 	tryoutService := service.NewTryoutService(tryouts, sessions, attempts, enrollments, cacheLayer, cfg)
-	learningService := service.NewLearningService(learning, attempts, enrollments, tryoutService, cacheLayer, cfg)
+	classroomService := service.NewClassroomService(classroomRepo, enrollments, catalog, cfg)
+	learningService := service.NewLearningService(learning, attempts, enrollments, tryoutService, classroomService, cacheLayer, cfg)
 	adminService := service.NewAdminService(
 		users, orders, enrollments, catalog, tryouts, attempts, learning,
 		catalogService, tryoutService, cfg,
@@ -68,18 +70,19 @@ func buildRouter(
 	)
 
 	return router.New(router.Options{
-		Config:          cfg,
-		DB:              db,
-		Cache:           cacheClient,
-		Limiter:         limiter,
-		Manager:         manager,
-		Version:         version,
-		AuthService:     authService,
-		CatalogService:  catalogService,
-		BillingService:  billingService,
-		TryoutService:   tryoutService,
-		LearningService: learningService,
-		AdminService:    adminService,
-		MentorService:   mentorService,
+		Config:           cfg,
+		DB:               db,
+		Cache:            cacheClient,
+		Limiter:          limiter,
+		Manager:          manager,
+		Version:          version,
+		AuthService:      authService,
+		CatalogService:   catalogService,
+		BillingService:   billingService,
+		TryoutService:    tryoutService,
+		LearningService:  learningService,
+		ClassroomService: classroomService,
+		AdminService:     adminService,
+		MentorService:    mentorService,
 	})
 }
