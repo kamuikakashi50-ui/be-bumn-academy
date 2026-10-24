@@ -201,6 +201,7 @@ Semua endpoint berada di bawah `/api/v1`. Kolom **Akses**: `publik`, `peserta`
 
 | Metode | Path | Akses | Keterangan |
 | --- | --- | --- | --- |
+| GET | `/insights/corporate` | publik | insight agregat kohort untuk halaman "Solusi Korporasi" (tanpa data pribadi) |
 | GET | `/classroom` | peserta | daftar kelas yang dimiliki + ringkasan progres |
 | GET | `/classroom/courses/{slug}` | peserta | modul, materi, dan urutan materi satu kelas |
 | GET | `/classroom/lessons/{id}` | peserta | detail materi (+ navigasi sebelumnya/berikutnya) |
@@ -349,6 +350,26 @@ Item tidak dihapus, hanya ditandai `active = false`. Efeknya:
 Catatan implementasi: kolom `active` selalu ditulis eksplisit oleh Go (tag GORM
 `not null` tanpa `default`), sehingga membuat item langsung dalam keadaan
 nonaktif ikut bekerja — sebelumnya nilai `false` diabaikan karena default kolom.
+
+### Insight korporasi (B2B) — `GET /insights/corporate`
+
+Endpoint publik yang menyuplai halaman **“Solusi Korporasi”** di front-end. Semua
+angkanya agregat dan di-cache (`insights:corporate`, TTL katalog):
+
+| Field | Isi |
+| --- | --- |
+| `totalPeserta` / `activePeserta` | akun peserta & yang sudah pernah mengerjakan tryout |
+| `totalAttempts` / `distinctTryouts` | jumlah percobaan & paket tryout yang dikerjakan |
+| `averageScore` / `topScore` / `passingRate` | rata-rata, skor tertinggi, dan persentase di atas `PASSING_THRESHOLD` |
+| `scoreDistribution` | jumlah percobaan per rentang nilai |
+| `skillProfile` | rata-rata skor per kategori/subtes (dari `attempt_categories`) |
+| `topPerformers` | 8 skor teratas dengan **nama disamarkan** (`MaskName`: “I*** P***”) |
+| `monthlyTrend` | jumlah percobaan & rata-rata skor 6 bulan terakhir |
+
+Privasi: nama peserta tidak pernah keluar apa adanya (hanya huruf pertama tiap
+kata + `***`), tidak ada `userId`, email, atau nomor telepon pada balasan, dan
+halaman front-end tidak meminta data pribadi. Penyamaran diuji unit
+(`TestMaskNameTidakMembocorkanNama`) dan diverifikasi di skrip integrasi.
 
 ### Kesehatan
 

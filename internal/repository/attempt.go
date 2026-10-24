@@ -317,3 +317,130 @@ func (r *AttemptRepository) ScoreDistribution(ctx context.Context) ([]ScoreBucke
 	}
 	return rows, nil
 }
+
+/* ------------------------- insight agregat (B2B/HR) ----------------------- */
+
+// GlobalStatsRow adalah ringkasan agregat seluruh percobaan tryout.
+type GlobalStatsRow struct {
+	TotalAttempts   int64   `gorm:"column:total_attempts"`
+	AverageScore    float64 `gorm:"column:average_score"`
+	PassedAttempts  int64   `gorm:"column:passed_attempts"`
+	ActivePeserta   int64   `gorm:"column:active_peserta"`
+	TopScore        int     `gorm:"column:top_score"`
+	DistinctTryouts int64   `gorm:"column:distinct_tryouts"`
+}
+
+// GlobalStats menghitung agregat seluruh percobaan tryout (tanpa data pribadi).
+//
+// `passingThreshold` dipakai untuk menghitung jumlah percobaan yang melewati
+// ambang batas internal latihan.
+func (r *AttemptRepository) GlobalStats(ctx context.Context, passingThreshold int) (*GlobalStatsRow, error) {
+	var row GlobalStatsRow
+	err := r.db.WithContext(ctx).Model(&models.Attempt{}).
+		Select(`COUNT(*) AS total_attempts,
+		        COALESCE(AVG(score), 0) AS average_score,
+		        COUNT(*) FILTER (WHERE score >= ?) AS passed_attempts,
+		        COUNT(DISTINCT user_id) AS active_peserta,
+		        COALESCE(MAX(score), 0) AS top_score,
+		        COUNT(DISTINCT tryout_id) AS distinct_tryouts`, passingThreshold).
+		Scan(&row).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal menghitung agregat percobaan tryout.")
+	}
+	return &row, nil
+}
+
+// SkillScoreRow adalah rata-rata skor satu kategori/subtes.
+type SkillScoreRow struct {
+	Name         string  `gorm:"column:name"`
+	AverageScore float64 `gorm:"column:average_score"`
+	Attempts     int64   `gorm:"column:attempts"`
+}
+
+// SkillProfile mengagregasi rata-rata skor per kategori/subtes lintas peserta.
+//
+// Dipakai untuk menggambarkan kompetensi kohort (mis. kuat di penalaran numerik,
+// lemah di logika analitis) tanpa membuka identitas peserta.
+func (r *AttemptRepository) SkillProfile(ctx context.Context, limit int) ([]SkillScoreRow, error) {
+	if limit <= 0 {
+		limit = 12
+	}
+
+	var rows []SkillScoreRow
+	err := r.db.WithContext(ctx).Model(&models.AttemptCategory{}).
+		Select("name AS name, COALESCE(AVG(score), 0) AS average_score, COUNT(*) AS attempts").
+		Group("name").
+		Order("average_score DESC, name ASC").
+		Limit(limit).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal menghitung profil kompetensi.")
+	}
+	return rows, nil
+}
+
+// TopPerformerRow adalah satu percobaan dengan skor tertinggi.
+type TopPerformerRow struct {
+	Name            string    `gorm:"column:name"`
+	Title           string    `gorm:"column:title"`
+	Score           int       `gorm:"column:score"`
+	Correct         int       `gorm:"column:correct"`
+	Total           int       `gorm:"column:total"`
+	DurationSeconds int       `gorm:"column:duration_seconds"`
+	TakenAt         time.Time `gorm:"column:taken_at"`
+}
+
+// TopPerformers mengambil percobaan dengan skor tertinggi.
+//
+// Nama peserta ikut diambil hanya untuk disamarkan di lapisan service — halaman
+// publik tidak boleh menampilkan identitas asli.
+func (r *AttemptRepository) TopPerformers(ctx context.Context, limit int) ([]TopPerformerRow, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+
+	var rows []TopPerformerRow
+	err := r.db.WithContext(ctx).Model(&models.Attempt{}).
+		Select(`users.name AS name, attempts.title AS title, attempts.score AS score,
+		        attempts.correct AS correct, attempts.total AS total,
+		        attempts.duration_seconds AS duration_seconds, attempts.taken_at AS taken_at`).
+		Joins("JOIN users ON users.id = attempts.user_id").
+		Order("attempts.score DESC, attempts.duration_seconds ASC, attempts.taken_at DESC").
+		Limit(limit).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal memuat daftar skor teratas.")
+	}
+	return rows, nil
+}
+
+// MonthlyTrendRow adalah jumlah percobaan dan rata-rata skor pada satu bulan.
+type MonthlyTrendRow struct {
+	Label        string  `gorm:"column:label"`
+	Attempts     int64   `gorm:"column:attempts"`
+	AverageScore float64 `gorm:"column:average_score"`
+}
+
+// MonthlyTrend mengagregasi percobaan per bulan (urut lama → baru).
+func (r *AttemptRepository) MonthlyTrend(ctx context.Context, months int) ([]MonthlyTrendRow, error) {
+	if months <= 0 {
+		months = 6
+	}
+
+	since := time.Now().UTC().AddDate(0, -months+1, 0)
+	since = time.Date(since.Year(), since.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+	var rows []MonthlyTrendRow
+	err := r.db.WithContext(ctx).Model(&models.Attempt{}).
+		Select(`to_char(date_trunc('month', taken_at), 'YYYY-MM') AS label,
+		        COUNT(*) AS attempts,
+		        COALESCE(AVG(score), 0) AS average_score`).
+		Where("taken_at >= ?", since).
+		Group("label").
+		Order("label ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal menghitung tren bulanan.")
+	}
+	return rows, nil
+}

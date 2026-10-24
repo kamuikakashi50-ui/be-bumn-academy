@@ -56,6 +56,7 @@ func buildRouter(
 	billingService := service.NewBillingService(catalog, orders, enrollments, users, learning, midtransClient, cfg)
 	tryoutService := service.NewTryoutService(tryouts, sessions, attempts, enrollments, cacheLayer, cfg)
 	classroomService := service.NewClassroomService(classroomRepo, enrollments, catalog, cfg)
+	corporateService := service.NewCorporateService(attempts, users, cacheLayer, cfg)
 	learningService := service.NewLearningService(learning, attempts, enrollments, tryoutService, classroomService, cacheLayer, cfg)
 	adminService := service.NewAdminService(
 		users, orders, enrollments, catalog, tryouts, attempts, learning,
@@ -82,6 +83,7 @@ func buildRouter(
 		TryoutService:    tryoutService,
 		LearningService:  learningService,
 		ClassroomService: classroomService,
+		CorporateService: corporateService,
 		AdminService:     adminService,
 		MentorService:    mentorService,
 	})

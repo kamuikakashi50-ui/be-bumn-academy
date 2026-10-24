@@ -156,3 +156,6 @@ func PrefixTryout() string { return "tryout:" }
 
 // PrefixQuestionBank adalah awalan seluruh kunci bank soal.
 func PrefixQuestionBank() string { return "bank:" }
+
+// KeyCorporateInsights adalah kunci ringkasan agregat halaman korporasi (B2B).
+func KeyCorporateInsights() string { return "insights:corporate" }

@@ -30,6 +30,7 @@ type Deps struct {
 	Tryout    *service.TryoutService
 	Learning  *service.LearningService
 	Classroom *service.ClassroomService
+	Corporate *service.CorporateService
 	Admin     *service.AdminService
 	Mentor    *service.MentorService
 }

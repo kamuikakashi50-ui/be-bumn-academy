@@ -31,6 +31,7 @@ type Options struct {
 	TryoutService    *service.TryoutService
 	LearningService  *service.LearningService
 	ClassroomService *service.ClassroomService
+	CorporateService *service.CorporateService
 	AdminService     *service.AdminService
 	MentorService    *service.MentorService
 }
@@ -44,6 +45,7 @@ func New(opts Options) http.Handler {
 		Tryout:    opts.TryoutService,
 		Learning:  opts.LearningService,
 		Classroom: opts.ClassroomService,
+		Corporate: opts.CorporateService,
 		Admin:     opts.AdminService,
 		Mentor:    opts.MentorService,
 	}
@@ -54,6 +56,7 @@ func New(opts Options) http.Handler {
 	tryoutHandler := handler.NewTryoutHandler(deps)
 	learningHandler := handler.NewLearningHandler(deps)
 	classroomHandler := handler.NewClassroomHandler(deps)
+	corporateHandler := handler.NewCorporateHandler(deps)
 	adminHandler := handler.NewAdminHandler(deps)
 	aiHandler := handler.NewAIHandler(deps)
 	healthHandler := handler.NewHealthHandler(opts.DB, opts.Cache, opts.Version)
@@ -93,6 +96,7 @@ func New(opts Options) http.Handler {
 			tryout:    tryoutHandler,
 			learning:  learningHandler,
 			classroom: classroomHandler,
+			corporate: corporateHandler,
 			media:     mediaHandler,
 			admin:     adminHandler,
 			ai:        aiHandler,
@@ -119,6 +123,7 @@ type routeHandlers struct {
 	tryout    *handler.TryoutHandler
 	learning  *handler.LearningHandler
 	classroom *handler.ClassroomHandler
+	corporate *handler.CorporateHandler
 	media     *handler.MediaHandler
 	admin     *handler.AdminHandler
 	ai        *handler.AIHandler
@@ -218,6 +223,9 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 	// Status mentor AI bisa dilihat tamu agar UI bisa menyembunyikan panel
 	// ketika fitur belum siap.
 	r.Get("/ai/status", h.ai.Status)
+
+	// Insight agregat untuk halaman korporasi (publik, tanpa data pribadi).
+	r.Get("/insights/corporate", h.corporate.Insights)
 
 	// Media pembelajaran (video & e-book) — publik agar dapat dimuat langsung
 	// oleh elemen <video>/<iframe> di browser tanpa header khusus.
