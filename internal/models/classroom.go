@@ -26,7 +26,7 @@ type CourseModule struct {
 	Title       string `gorm:"column:title;not null" json:"title"`
 	Description string `gorm:"column:description;not null;default:''" json:"description"`
 	SortOrder   int    `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
-	Active      bool   `gorm:"column:active;not null;default:true" json:"active"`
+	Active      bool   `gorm:"column:active;not null" json:"active"`
 	// Lessons diisi lewat Preload saat memuat modul.
 	Lessons []Lesson `gorm:"foreignKey:ModuleID" json:"lessons,omitempty"`
 	Timestamps
@@ -52,7 +52,7 @@ type Lesson struct {
 	Content         string     `gorm:"column:content;not null;default:''" json:"content"`
 	DurationSeconds int        `gorm:"column:duration_seconds;not null;default:0" json:"durationSeconds"`
 	SortOrder       int        `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
-	Active          bool       `gorm:"column:active;not null;default:true" json:"active"`
+	Active          bool       `gorm:"column:active;not null" json:"active"`
 	Timestamps
 }
 

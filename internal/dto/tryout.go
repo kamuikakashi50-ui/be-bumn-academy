@@ -30,6 +30,8 @@ type TryoutSummary struct {
 	AttemptsLeft    int           `json:"attemptsLeft"`
 	LockedReason    string        `json:"lockedReason,omitempty"`
 	ActiveSessionID string        `json:"activeSessionId,omitempty"`
+	// Active menandai paket masih dibuka untuk peserta (soft delete admin).
+	Active bool `json:"active"`
 }
 
 // TryoutDetail adalah detail satu paket tryout beserta aturan pengerjaannya.

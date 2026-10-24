@@ -96,6 +96,7 @@ func toProductView(product models.Product, owned bool) dto.ProductView {
 		Includes:    emptyIfNil(product.Includes),
 		Badge:       product.Badge,
 		Owned:       owned,
+		Active:      product.Active,
 	}
 }
 

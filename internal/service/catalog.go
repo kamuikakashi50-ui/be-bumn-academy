@@ -114,6 +114,24 @@ func (s *CatalogService) PaymentMethods(ctx context.Context) ([]dto.PaymentMetho
 	return out, nil
 }
 
+// AdminProducts mengembalikan seluruh produk (termasuk yang nonaktif) untuk
+// panel admin.
+//
+// Sengaja tidak memakai cache katalog: daftar ini dipakai untuk mengelola status
+// jual produk sehingga harus selalu mencerminkan data terbaru.
+func (s *CatalogService) AdminProducts(ctx context.Context, includeInactive bool) ([]dto.ProductView, error) {
+	rows, err := s.catalog.ListProducts(ctx, includeInactive)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]dto.ProductView, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toProductView(row, false))
+	}
+	return out, nil
+}
+
 // Vouchers mengembalikan daftar voucher (khusus admin, tidak di-cache).
 func (s *CatalogService) Vouchers(ctx context.Context, includeInactive bool) ([]dto.VoucherView, error) {
 	rows, err := s.catalog.ListVouchers(ctx, includeInactive)

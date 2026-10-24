@@ -59,6 +59,11 @@ func (s *BillingService) Quote(ctx context.Context, userID string, req dto.Quote
 	if err != nil {
 		return nil, err
 	}
+	// Produk yang dinonaktifkan (soft delete) tidak bisa dibeli lagi; peserta yang
+	// sudah memilikinya tetap memakai aksesnya (lihat enrollments).
+	if !product.Active {
+		return nil, apperror.BadRequest("Produk ini sedang tidak dijual.")
+	}
 
 	quote := dto.QuoteResponse{
 		ProductSlug:     product.Slug,

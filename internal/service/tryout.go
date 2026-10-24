@@ -155,10 +155,35 @@ func (s *TryoutService) List(ctx context.Context, userID string, isAdmin bool) (
 	return out, nil
 }
 
+// AdminList mengembalikan daftar paket tryout untuk panel admin.
+//
+// Berbeda dari `List`, daftar ini tidak memakai cache dan dapat menyertakan paket
+// yang dinonaktifkan (soft delete) sehingga admin tetap melihatnya di panel.
+func (s *TryoutService) AdminList(ctx context.Context, includeInactive bool) ([]dto.TryoutSummary, error) {
+	packages, err := s.tryouts.ListPackages(ctx, !includeInactive)
+	if err != nil {
+		return nil, err
+	}
+
+	counts, err := s.bankCounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]dto.TryoutSummary, 0, len(packages))
+	for _, pkg := range packages {
+		out = append(out, s.toSummary(pkg, counts, map[string]bool{}, map[string]int{}, nil, true))
+	}
+	return out, nil
+}
+
 // Get mengembalikan detail satu paket tryout.
 func (s *TryoutService) Get(ctx context.Context, userID, id string, isAdmin bool) (*dto.TryoutDetail, error) {
 	pkg, err := s.GetPackage(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensurePackageVisible(*pkg, isAdmin); err != nil {
 		return nil, err
 	}
 
@@ -197,6 +222,15 @@ func (s *TryoutService) Get(ctx context.Context, userID, id string, isAdmin bool
 	}, nil
 }
 
+// ensurePackageVisible menolak akses peserta ke paket tryout yang dinonaktifkan
+// (soft delete) tanpa menyembunyikan paket itu dari panel admin.
+func ensurePackageVisible(pkg models.TryoutPackage, isAdmin bool) error {
+	if pkg.Active || isAdmin {
+		return nil
+	}
+	return apperror.NotFound("Tryout tidak ditemukan.")
+}
+
 // sessionGraceMinutes adalah kelonggaran tambahan di atas total waktu subtes
 // sebelum sesi dianggap kedaluwarsa keras (mis. koneksi terputus sesaat).
 const sessionGraceMinutes = 10
@@ -205,6 +239,9 @@ const sessionGraceMinutes = 10
 func (s *TryoutService) StartSession(ctx context.Context, userID, tryoutID string, isAdmin bool) (*dto.TryoutSessionView, error) {
 	pkg, err := s.tryouts.FindPackage(ctx, tryoutID)
 	if err != nil {
+		return nil, err
+	}
+	if err := ensurePackageVisible(*pkg, isAdmin); err != nil {
 		return nil, err
 	}
 
@@ -1036,6 +1073,7 @@ func (s *TryoutService) toSummary(
 		AttemptsUsed:    used,
 		AttemptsLeft:    attemptsLeft,
 		LockedReason:    reason,
+		Active:          pkg.Active,
 	}
 	if activeSessions != nil {
 		summary.ActiveSessionID = activeSessions[pkg.ID]

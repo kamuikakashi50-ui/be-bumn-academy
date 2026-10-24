@@ -171,6 +171,19 @@ func (h *AdminHandler) ImportQuestions(w http.ResponseWriter, r *http.Request) {
 
 /* ------------------------------ paket tryout ------------------------------ */
 
+// ListTryouts menangani GET /admin/tryouts.
+//
+// `?includeInactive=true` menampilkan paket yang dinonaktifkan (soft delete)
+// sehingga admin tetap bisa mengaktifkannya kembali dari panel.
+func (h *AdminHandler) ListTryouts(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Tryout.AdminList(r.Context(), queryBool(r, "includeInactive"))
+	if err != nil {
+		response.Fail(w, err)
+		return
+	}
+	response.OK(w, items)
+}
+
 // CreateTryout menangani POST /admin/tryouts.
 func (h *AdminHandler) CreateTryout(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateTryoutRequest
@@ -213,6 +226,19 @@ func (h *AdminHandler) DeleteTryout(w http.ResponseWriter, r *http.Request) {
 }
 
 /* --------------------------------- produk --------------------------------- */
+
+// ListProducts menangani GET /admin/products.
+//
+// `?includeInactive=true` menampilkan produk yang dinonaktifkan (soft delete)
+// agar admin tetap bisa mengaktifkannya kembali.
+func (h *AdminHandler) ListProducts(w http.ResponseWriter, r *http.Request) {
+	items, err := h.deps.Catalog.AdminProducts(r.Context(), queryBool(r, "includeInactive"))
+	if err != nil {
+		response.Fail(w, err)
+		return
+	}
+	response.OK(w, items)
+}
 
 // CreateProduct menangani POST /admin/products.
 func (h *AdminHandler) CreateProduct(w http.ResponseWriter, r *http.Request) {

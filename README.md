@@ -295,10 +295,28 @@ hanya bila `MIDTRANS_SANDBOX_SIMULATOR=true` dan `MIDTRANS_IS_PRODUCTION=false`.
 | GET/POST | `/admin/vouchers`, PATCH/DELETE `/admin/vouchers/{code}` | CRUD voucher |
 | POST | `/admin/broadcast` | broadcast WhatsApp ke segmen peserta |
 | GET | `/admin/broadcasts` | riwayat broadcast |
+| GET | `/admin/products?includeInactive=true` | daftar produk termasuk yang dinonaktifkan (soft delete) |
+| GET | `/admin/tryouts?includeInactive=true` | daftar paket tryout termasuk yang dinonaktifkan |
 | GET/POST | `/admin/classroom/modules` | daftar & tambah modul ruang kelas |
 | PATCH/DELETE | `/admin/classroom/modules/{id}` | ubah/hapus modul (cascade materi) |
 | GET/POST | `/admin/classroom/lessons` | daftar & tambah materi (video/e-book) |
 | PATCH/DELETE | `/admin/classroom/lessons/{id}` | ubah/hapus materi |
+
+### Soft delete (nonaktifkan) produk & paket tryout
+
+Item tidak dihapus, hanya ditandai `active = false`. Efeknya:
+
+| Perilaku | Produk nonaktif | Paket tryout nonaktif |
+| --- | --- | --- |
+| Katalog peserta (`GET /products`, `GET /tryouts`) | tersembunyi | tersembunyi |
+| Pembelian (`POST /checkout/quote`, `POST /orders`) | ditolak: *Produk ini sedang tidak dijual.* | — |
+| Detail & mulai sesi (`GET /tryouts/{id}`, `POST /tryouts/{id}/sessions`) | — | `404` untuk peserta, tetap terbuka untuk admin |
+| Akses yang sudah dimiliki (enrollments, ruang kelas, riwayat) | tetap berjalan | sesi yang sedang berjalan tetap bisa diselesaikan |
+| Panel admin (`GET /admin/products`, `GET /admin/tryouts`) | tetap terlihat + bisa diaktifkan kembali | tetap terlihat + bisa diaktifkan kembali |
+
+Catatan implementasi: kolom `active` selalu ditulis eksplisit oleh Go (tag GORM
+`not null` tanpa `default`), sehingga membuat item langsung dalam keadaan
+nonaktif ikut bekerja — sebelumnya nilai `false` diabaikan karena default kolom.
 
 ### Kesehatan
 

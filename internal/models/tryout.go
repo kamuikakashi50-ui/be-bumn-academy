@@ -30,7 +30,7 @@ type Question struct {
 	Explanation string     `gorm:"column:explanation;not null;default:''" json:"explanation"`
 	Difficulty  Difficulty `gorm:"column:difficulty;not null;default:sedang" json:"difficulty"`
 	Position    int        `gorm:"column:position;not null;default:0" json:"position"`
-	Active      bool       `gorm:"column:active;not null;default:true" json:"active"`
+	Active      bool       `gorm:"column:active;not null" json:"active"`
 	Timestamps
 }
 
@@ -56,7 +56,7 @@ type TryoutPackage struct {
 	RequiredProduct *string `gorm:"column:required_product" json:"requiredProduct"`
 	Attempts        int     `gorm:"column:attempts;not null;default:1" json:"attempts"`
 	AccessUntil     string  `gorm:"column:access_until;not null;default:Tanpa batas" json:"accessUntil"`
-	Active          bool    `gorm:"column:active;not null;default:true" json:"active"`
+	Active          bool    `gorm:"column:active;not null" json:"active"`
 	SortOrder       int     `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
 	Timestamps
 

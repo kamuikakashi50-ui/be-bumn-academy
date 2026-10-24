@@ -240,10 +240,12 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Patch("/questions/{id}", h.admin.UpdateQuestion)
 		r.Delete("/questions/{id}", h.admin.DeleteQuestion)
 
+		r.Get("/tryouts", h.admin.ListTryouts)
 		r.Post("/tryouts", h.admin.CreateTryout)
 		r.Patch("/tryouts/{id}", h.admin.UpdateTryout)
 		r.Delete("/tryouts/{id}", h.admin.DeleteTryout)
 
+		r.Get("/products", h.admin.ListProducts)
 		r.Post("/products", h.admin.CreateProduct)
 		r.Patch("/products/{slug}", h.admin.UpdateProduct)
 		r.Delete("/products/{slug}", h.admin.DeleteProduct)

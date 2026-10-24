@@ -52,7 +52,7 @@ type Product struct {
 	Type        ProductType `gorm:"column:type;not null;default:program" json:"type"`
 	Includes    StringList  `gorm:"column:includes;type:jsonb;not null;default:'[]'" json:"includes"`
 	Badge       *string     `gorm:"column:badge" json:"badge,omitempty"`
-	Active      bool        `gorm:"column:active;not null;default:true" json:"active"`
+	Active      bool        `gorm:"column:active;not null" json:"active"`
 	SortOrder   int         `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
 }
 
@@ -68,7 +68,7 @@ type PaymentMethod struct {
 	Label     string `gorm:"column:label;not null" json:"label"`
 	Channel   string `gorm:"column:channel;not null;default:''" json:"channel"`
 	Fee       int64  `gorm:"column:fee;not null;default:0" json:"fee"`
-	Active    bool   `gorm:"column:active;not null;default:true" json:"active"`
+	Active    bool   `gorm:"column:active;not null" json:"active"`
 	SortOrder int    `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
 }
 
@@ -96,7 +96,7 @@ type Voucher struct {
 	UsedCount   int         `gorm:"column:used_count;not null;default:0" json:"usedCount"`
 	StartsAt    *time.Time  `gorm:"column:starts_at" json:"startsAt,omitempty"`
 	EndsAt      *time.Time  `gorm:"column:ends_at" json:"endsAt,omitempty"`
-	Active      bool        `gorm:"column:active;not null;default:true" json:"active"`
+	Active      bool        `gorm:"column:active;not null" json:"active"`
 	Timestamps
 }
 

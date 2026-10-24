@@ -33,6 +33,8 @@ type ProductView struct {
 	Includes    []string `json:"includes"`
 	Badge       *string  `json:"badge,omitempty"`
 	Owned       bool     `json:"owned"`
+	// Active menandai produk masih dijual (dipakai panel admin untuk soft delete).
+	Active bool `json:"active"`
 }
 
 // PaymentMethodView adalah metode pembayaran.
