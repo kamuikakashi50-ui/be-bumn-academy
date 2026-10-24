@@ -850,42 +850,57 @@ Seluruh variabel ada di `.env.example`. Yang paling sering disesuaikan:
 ## 13. Troubleshooting
 
 **`lookup postgres on 127.0.0.53:53: read: connection refused` (ba-api restart terus)**
-Container tidak bisa me-resolve nama service `postgres`/`redis` karena
-`/etc/resolv.conf` di dalam container memakai stub resolver host
-(systemd-resolved `127.0.0.53`) — alamat itu tidak ada di dalam network namespace
-container, sehingga seluruh resolusi nama gagal.
+Container tidak bisa me-resolve nama service `postgres`/`redis`: `/etc/resolv.conf`
+di dalam container memakai stub resolver host (systemd-resolved `127.0.0.53`),
+padahal alamat itu tidak ada di dalam network namespace container. Container yang
+sehat memakai DNS internal Docker di **`127.0.0.11`**.
 
-Cek dulu (harus muncul `nameserver 127.0.0.11` milik Docker):
+**Langkah 1 — diagnosa (30 detik)**
 
 ```bash
-docker run --rm alpine cat /etc/resolv.conf
-docker compose exec api getent hosts postgres
-cat /etc/docker/daemon.json            # pastikan tidak ada "dns": ["127.0.0.53", ...]
-readlink -f /etc/resolv.conf           # biasanya /run/systemd/resolve/stub-resolv.conf
+make docker-dns-check      # resolv.conf container, isi daemon.json, resolusi nama service
+# atau manual:
+docker run --rm alpine cat /etc/resolv.conf       # cari "nameserver 127.0.0.11"
+cat /etc/docker/daemon.json 2>/dev/null           # cari entri "dns": ["127.0.0.53", ...]
+readlink -f /etc/resolv.conf                      # biasanya .../systemd/resolve/stub-resolv.conf
 ```
 
-Perbaikan (pilih salah satu):
+**Langkah 2 — perbaiki DNS Docker di host (solusi paling benar)**
 
-1. **Perbaiki DNS Docker di host** — hapus entri `dns` yang menunjuk `127.0.0.53`
-di `/etc/docker/daemon.json`, arahkan resolv.conf host ke resolver nyata, lalu
-mulai ulang daemon:
+```bash
+# hapus entri "dns" yang menunjuk 127.0.0.53 dari /etc/docker/daemon.json, lalu:
+sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf   # hindari stub 127.0.0.53
+sudo systemctl restart systemd-resolved docker
+docker compose up -d --force-recreate api
+```
 
-   ```bash
-   sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf   # hindari stub 127.0.0.53
-   sudo systemctl restart systemd-resolved docker
-   docker compose up -d --force-recreate api
-   ```
+Pada host yang menjalankan Docker di dalam container/LXC (netfilter dibatasi),
+DNS internal Docker sering tidak bisa dipakai — lanjut ke Langkah 3.
 
-2. **Tanpa mengubah host** — jalankan dengan override yang mengarahkan nama
-service ke gateway host lewat `/etc/hosts` container (tidak memakai DNS):
+**Langkah 3 — jalankan tanpa DNS sama sekali (nama service lewat `/etc/hosts`)**
 
-   ```bash
-   docker compose -f docker-compose.yml -f docker-compose.host-gateway.yml up -d --build
-   ```
+```bash
+make docker-up-dns-workaround
+# ekuivalen dengan:
+docker compose -f docker-compose.yml -f docker-compose.host-gateway.yml up -d --build
+```
 
-   Override ini memakai port publikasi host (`POSTGRES_HOST_PORT`/`REDIS_HOST_PORT`,
-default `55432`/`56379`) sehingga tetap kompatibel dengan `.env` yang dipakai
-untuk menjalankan backend langsung di host.
+Override `docker-compose.host-gateway.yml` memetakan `postgres`/`redis` ke gateway
+host lewat `extra_hosts`, sehingga koneksi memakai port publikasi host
+(`POSTGRES_HOST_PORT`/`REDIS_HOST_PORT`, default `55432`/`56379`) dan **tidak
+membutuhkan resolusi nama apa pun**.
+
+**Langkah 4 — fallback terakhir: jaringan host** (bila port publikasi antar
+container juga diblokir)
+
+```bash
+docker compose up -d postgres redis
+docker run -d --name ba-api --restart unless-stopped --network host   -e APP_ENV=production -e HTTP_PORT=8080 -e MEDIA_DIR=/app/media   -e DB_HOST=127.0.0.1 -e DB_PORT=55432 -e DB_USER=bumn -e DB_PASSWORD=bumn   -e DB_NAME=bumn_academy -e DB_SSLMODE=disable -e DB_AUTO_MIGRATE=true   -e REDIS_ENABLED=true -e REDIS_ADDR=127.0.0.1:56379   -e JWT_SECRET=ganti-dengan-secret-acak-minimal-32-karakter   -e SEED_ON_START=true be-bumn-academy-api
+```
+
+Container ini memakai network namespace host sehingga menyambung ke PostgreSQL dan
+Redis lewat `127.0.0.1` (port publikasi di atas) — sama seperti menjalankan
+backend langsung di host.
 
 **`no required module provides package github.com/bumn-academy/be-bumn-academy/internal/seed`**
 Build context tidak memuat berkas sumber `internal/seed`, `cmd/seed`, atau

@@ -9,7 +9,7 @@ BINARY      := bin/api
 MIGRATE_BIN := bin/migrate
 SEED_BIN    := bin/seed
 
-.PHONY: help tidy fmt vet build run migrate-up migrate-down migrate-status seed test smoke loadtest ai-test docker-up docker-down docker-logs clean
+.PHONY: help tidy fmt vet build run migrate-up migrate-down migrate-status seed test smoke loadtest ai-test docker-up docker-up-dns-workaround docker-dns-check docker-down docker-logs clean
 
 help: ## Tampilkan daftar perintah
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -49,6 +49,17 @@ test: ## Jalankan unit test
 
 docker-up: ## Nyalakan postgres + redis + api
 	docker compose up -d --build
+
+docker-up-dns-workaround: ## Nyalakan stack bila DNS antar-container rusak (nama service lewat /etc/hosts, tanpa DNS)
+	docker compose -f docker-compose.yml -f docker-compose.host-gateway.yml up -d --build
+
+docker-dns-check: ## Diagnosa DNS container (resolv.conf harus memuat 127.0.0.11)
+	@echo "== /etc/resolv.conf di dalam container =="
+	@docker run --rm alpine cat /etc/resolv.conf 2>/dev/null || echo "(gagal menjalankan container uji)"
+	@echo "== konfigurasi DNS daemon (/etc/docker/daemon.json) =="
+	@cat /etc/docker/daemon.json 2>/dev/null || echo "(tidak ada /etc/docker/daemon.json)"
+	@echo "== resolusi nama service dari container api =="
+	@docker compose exec -T api getent hosts postgres 2>/dev/null || echo "GAGAL: nama service tidak bisa di-resolve"
 
 docker-down: ## Matikan semua container
 	docker compose down
