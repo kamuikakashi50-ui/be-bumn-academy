@@ -36,6 +36,14 @@ data demo (`SEED_ON_START=true`) saat pertama kali start.
 > **Port host:** PostgreSQL dipetakan ke `55432` dan Redis ke `56379` agar tidak
 > bentrok dengan PostgreSQL/Redis lokal yang mungkin sudah berjalan di mesin
 > pengembangan. Ubah lewat `POSTGRES_HOST_PORT` / `REDIS_HOST_PORT`.
+>
+> **Build gagal dengan `no required module provides package .../internal/seed`?**
+> Artinya berkas sumber tidak ikut terbawa ke build context — biasanya karena
+> build dilakukan dari hasil clone/arsip git yang tidak memuat direktori tersebut.
+> Pastikan `.gitignore` memakai pola ber-anchor (`/seed`, `/migrate`) sehingga
+> `internal/seed`, `cmd/seed`, dan `cmd/migrate` tetap terlacak; cek dengan
+> `git ls-files internal/seed cmd/seed cmd/migrate`. Detailnya di bagian
+> [Troubleshooting](#troubleshooting).
 
 ### Cara lokal (Go langsung)
 
@@ -840,6 +848,24 @@ Seluruh variabel ada di `.env.example`. Yang paling sering disesuaikan:
   dan sesuaikan `AI_DAILY_QUOTA` dengan anggaran yang tersedia.
 
 ## 13. Troubleshooting
+
+**`no required module provides package github.com/bumn-academy/be-bumn-academy/internal/seed`**
+Build context tidak memuat berkas sumber `internal/seed`, `cmd/seed`, atau
+`cmd/migrate`. Penyebab paling umum: pola `.gitignore` **tanpa garis miring**
+(`seed`, `migrate`) — pola seperti itu cocok di semua level direktori, sehingga
+direktori sumber bernama sama ikut terabaikan dan tidak pernah ikut ter-commit.
+Akibatnya build dari hasil clone/arsip git (mis. `docker compose up --build` di
+mesin bersih, CI, atau build Docker dari repositori Git) gagal, walau di mesin
+yang berkasnya masih ada build berjalan normal.
+
+Perbaikan (sudah diterapkan sejak commit `7f350a3`):
+
+```bash
+grep -n 'seed\|migrate' .gitignore      # harus ber-anchor: /seed, /migrate
+git ls-files internal/seed cmd/seed cmd/migrate   # harus menampilkan 5 berkas
+git pull                                # bila memakai hasil clone lama
+docker compose up -d --build
+```
 
 **`role "bumn" does not exist` / tersambung ke PostgreSQL lain**
 Ada PostgreSQL lokal di port 5432. Docker Compose proyek ini memakai port host
