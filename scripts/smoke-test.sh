@@ -135,6 +135,7 @@ check "quote produk gratis" "$FREE_TOTAL" "0"
 ORDER=$(req -X POST "$API/orders" -H "$AUTH" -d '{"productSlug":"kelas-intensif","voucherCode":"MULAI20","methodId":"qris"}')
 ORDER_ID=$(echo "$ORDER" | jq1 "['id']")
 INVOICE=$(echo "$ORDER" | jq1 "['invoiceNo']")
+ORDER_TOTAL=$(echo "$ORDER" | jq1 "['total']")
 [ -n "$ORDER_ID" ] && ok "pesanan dibuat: $INVOICE" || bad "gagal membuat pesanan"
 
 PAID=$(req -X POST "$API/orders/$ORDER_ID/pay" -H "$AUTH" | jq1 "['order']['status']")
@@ -146,9 +147,18 @@ check "akses produk setelah pembelian" "$ENROLLED" "1"
 UNLOCKED=$(req "$API/tryouts/to-akhlak-01" -H "$AUTH" | jq1 "['unlocked']")
 check "tryout AKHLAK terbuka setelah membeli kelas-intensif" "$UNLOCKED" "True"
 
-say "Webhook Midtrans (idempoten)"
-WEBHOOK=$(req -X POST "$API/webhooks/midtrans" -d "{\"order_id\":\"$INVOICE\",\"transaction_status\":\"settlement\",\"transaction_id\":\"smoke-1\"}" | jq1 "['status']")
+say "Webhook Midtrans (bertanda tangan, idempoten)"
+# Backend memverifikasi signature notifikasi: SHA512(order_id + status_code +
+# gross_amount + Server Key). Tanpa kredensial Midtrans asli, backend memakai
+# kunci simulator lokal (internal/pkg/midtrans.SandboxDemoServerKey), jadi skrip
+# ini menghitung tanda tangan yang sama agar jalur webhook tetap teruji.
+GROSS_AMOUNT="$ORDER_TOTAL.00"
+SIGNATURE=$(python3 -c 'import hashlib,sys;print(hashlib.sha512((sys.argv[1]+sys.argv[2]+sys.argv[3]+"SB-Mid-server-SANDBOX-SIMULATOR").encode()).hexdigest())' "$INVOICE" "200" "$GROSS_AMOUNT")
+WEBHOOK=$(req -X POST "$API/webhooks/midtrans" -d "{\"order_id\":\"$INVOICE\",\"status_code\":\"200\",\"gross_amount\":\"$GROSS_AMOUNT\",\"transaction_status\":\"settlement\",\"transaction_id\":\"smoke-1\",\"signature_key\":\"$SIGNATURE\"}" | jq1 "['status']")
 check "webhook diproses" "$WEBHOOK" "settlement"
+
+BAD_SIGNATURE=$(req -X POST "$API/webhooks/midtrans" -d "{\"order_id\":\"$INVOICE\",\"status_code\":\"200\",\"gross_amount\":\"$GROSS_AMOUNT\",\"transaction_status\":\"settlement\",\"transaction_id\":\"smoke-2\",\"signature_key\":\"tanda-tangan-palsu\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "webhook tanpa tanda tangan sah ditolak" "$BAD_SIGNATURE" "UNAUTHORIZED"
 
 say "Admin"
 ADMIN_TOKEN=$(req -X POST "$API/auth/login" -d '{"email":"admin@bumnacademy.id","password":"admin123"}' | jq1 "['accessToken']")

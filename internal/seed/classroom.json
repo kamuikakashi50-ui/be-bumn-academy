@@ -1,0 +1,223 @@
+{
+  "modules": [
+    {
+      "id": "mod-intensif-numerik",
+      "productSlug": "kelas-intensif",
+      "title": "Modul 1 · Penalaran Numerik",
+      "description": "Menguasai deret angka, perbandingan, dan persentase dengan langkah pengerjaan yang ringkas.",
+      "sortOrder": 1,
+      "lessons": [
+        {
+          "id": "les-numerik-deret",
+          "title": "Deret Angka & Pola",
+          "summary": "Kenali jenis deret lebih dulu: aritmetika, geometri, atau campuran, lalu tentukan polanya.",
+          "kind": "video",
+          "videoUrl": "/media/lessons/numerik-deret.mp4",
+          "posterUrl": "/media/lessons/numerik-deret-poster.jpg",
+          "content": "## Ringkasan materi\n- Deret aritmetika: selisih antar suku tetap.\n- Deret geometri: rasio antar suku tetap.\n- Deret campuran: gabungkan selisih dan rasio, atau pola bertingkat.\n\n## Langkah pengerjaan\n1. Hitung selisih dua suku pertama.\n2. Bila selisih tidak tetap, periksa rasio antar suku.\n3. Bila keduanya tidak tetap, periksa pola selisih (selisih dari selisih).\n\n## Contoh\nDeret 3, 7, 15, 31, ... memiliki pola dikali dua lalu ditambah satu, sehingga dua suku berikutnya adalah 63 dan 127.",
+          "durationSeconds": 24,
+          "sortOrder": 1
+        },
+        {
+          "id": "les-numerik-perbandingan",
+          "title": "Perbandingan & Persentase",
+          "summary": "Terjemahkan soal cerita menjadi perbandingan senilai atau berbalik nilai, lalu gunakan faktor skala.",
+          "kind": "video",
+          "videoUrl": "/media/lessons/numerik-perbandingan.mp4",
+          "posterUrl": "/media/lessons/numerik-perbandingan-poster.jpg",
+          "content": "## Ringkasan materi\n- Perbandingan senilai: nilai bertambah sebanding.\n- Perbandingan berbalik nilai: satu nilai naik, nilai lain turun (mis. jumlah pekerja dan waktu).\n\n## Rumus cepat\n- Senilai: a1/b1 = a2/b2\n- Berbalik nilai: a1 x b1 = a2 x b2\n\n## Contoh\nJika 5 pekerja menyelesaikan proyek dalam 8 hari, total pekerjaan 40 hari-kerja; dengan 8 pekerja hasilnya 5 hari.",
+          "durationSeconds": 24,
+          "sortOrder": 2
+        },
+        {
+          "id": "les-ebook-numerik",
+          "title": "E-book: Rumus Cepat Numerik",
+          "summary": "Kumpulan rumus dan trik hitung cepat untuk persentase, rata-rata, dan perbandingan.",
+          "kind": "ebook",
+          "content": "## Persentase\n- Diskon 25% dari Rp240.000 = Rp60.000, harga bayar Rp180.000.\n- Kenaikan 20% dari Rp250.000 = Rp50.000.\n\n## Rata-rata\n- Rata-rata gabungan memakai total nilai, bukan rata-rata dari rata-rata.\n- Contoh: 6 peserta rata-rata 72, menjadi 7 peserta rata-rata 74, nilai peserta baru 86.\n\n## Perbandingan\n- Tentukan jumlah bagian lebih dulu, lalu hitung nilai satu bagian.\n- Perbandingan 3 : 5 dari total Rp400.000 memberi Rp150.000 dan Rp250.000.\n\n## Tips ujian\n- Bulatkan angka sementara untuk memperkirakan jawaban, lalu verifikasi pilihan terdekat.\n- Periksa satuan pada soal cerita (jam, hari, km/jam).",
+          "durationSeconds": 360,
+          "sortOrder": 3
+        }
+      ]
+    },
+    {
+      "id": "mod-intensif-verbal",
+      "productSlug": "kelas-intensif",
+      "title": "Modul 2 · Penalaran Verbal",
+      "description": "Menaklukkan analogi, sinonim, antonim, dan pemahaman bacaan singkat.",
+      "sortOrder": 2,
+      "lessons": [
+        {
+          "id": "les-verbal-analogi",
+          "title": "Analogi & Sinonim",
+          "summary": "Tentukan hubungan kata pada pasangan contoh lebih dulu sebelum memilih jawaban.",
+          "kind": "video",
+          "videoUrl": "/media/lessons/verbal-analogi.mp4",
+          "posterUrl": "/media/lessons/verbal-analogi-poster.jpg",
+          "content": "## Ringkasan materi\n- Hubungan analogi: fungsi, sifat, bagian, tingkatan, sebab-akibat, atau sinonim.\n- Uji hubungan pada pasangan contoh, lalu terapkan pada pilihan jawaban.\n\n## Contoh\nMANDIRI : SWATANTRA memiliki hubungan sinonim, sehingga jawabannya PINTAR : CERDAS.",
+          "durationSeconds": 24,
+          "sortOrder": 1
+        },
+        {
+          "id": "les-ebook-verbal",
+          "title": "E-book: Peta Hubungan Kata",
+          "summary": "Daftar jenis hubungan kata yang sering muncul beserta contoh dan jebakan jawabannya.",
+          "kind": "ebook",
+          "content": "## Jenis hubungan kata\n- Sinonim: INSENTIF = BONUS.\n- Antonim: ABSTRAK >< KONKRET.\n- Bagian-keseluruhan: halaman adalah bagian dari buku.\n- Fungsi: cangkul untuk mengolah tanah.\n- Tingkatan: gerimis < hujan < badai.\n\n## Membaca pemahaman\n- Baca pertanyaan lebih dulu, lalu cari kata kunci pada teks.\n- Waspadai pilihan yang benar sebagian atau terlalu luas.\n- Simpulkan hanya dari pernyataan yang tersedia, bukan pengetahuan umum.\n\n## Jebakan umum\n- Pasangan dengan kata yang sama tetapi hubungan berbeda.\n- Pilihan yang menambahkan kata \"semua\" atau \"tidak pernah\".",
+          "durationSeconds": 330,
+          "sortOrder": 2
+        }
+      ]
+    },
+    {
+      "id": "mod-intensif-analitis",
+      "productSlug": "kelas-intensif",
+      "title": "Modul 3 · Logika Analitis",
+      "description": "Menarik kesimpulan yang sah dari premis memakai silogisme, modus ponens, dan modus tollens.",
+      "sortOrder": 3,
+      "lessons": [
+        {
+          "id": "les-analitis-silogisme",
+          "title": "Silogisme & Penarikan Kesimpulan",
+          "summary": "Gambarkan premis sebagai diagram himpunan sederhana agar kesimpulan mudah diuji.",
+          "kind": "video",
+          "videoUrl": "/media/lessons/analitis-silogisme.mp4",
+          "posterUrl": "/media/lessons/analitis-silogisme-poster.jpg",
+          "content": "## Ringkasan materi\n- Premis universal: semua A adalah B.\n- Premis partikular: sebagian B adalah C.\n- Kesimpulan sah hanya mengikuti kedua premis, bukan pengetahuan umum.\n\n## Pola yang sering keluar\n- Modus ponens: jika P maka Q; P benar, maka Q benar.\n- Modus tollens: jika P maka Q; Q salah, maka P salah.",
+          "durationSeconds": 24,
+          "sortOrder": 1
+        },
+        {
+          "id": "les-ebook-analitis",
+          "title": "E-book: Latihan Silogisme Bertahap",
+          "summary": "Contoh soal silogisme dari mudah sampai sulit beserta langkah pengujian tiap pilihan.",
+          "kind": "ebook",
+          "content": "## Langkah mengerjakan\n- Tandai kata kunci: semua, sebagian, tidak ada.\n- Gambarkan diagram himpunan untuk setiap premis.\n- Uji tiap pilihan jawaban pada diagram; pilih yang pasti benar.\n\n## Contoh mudah\nSemua karyawan baru wajib mengikuti pelatihan. Rani karyawan baru, maka Rani wajib mengikuti pelatihan.\n\n## Contoh sedang\nBeberapa peserta lulus tes; semua yang lulus menerima sertifikat, maka beberapa peserta menerima sertifikat.\n\n## Contoh sulit\nJika bilangan lebih besar dari 5 maka lebih besar dari 2. Bila bilangan X tidak lebih besar dari 2, maka X tidak lebih besar dari 5.",
+          "durationSeconds": 390,
+          "sortOrder": 2
+        }
+      ]
+    },
+    {
+      "id": "mod-intensif-akhlak",
+      "productSlug": "kelas-intensif",
+      "title": "Modul 4 · Nilai AKHLAK & Wawasan",
+      "description": "Memahami enam nilai inti AKHLAK dan menerapkannya pada studi kasus di dunia kerja.",
+      "sortOrder": 4,
+      "lessons": [
+        {
+          "id": "les-akhlak-studi-kasus",
+          "title": "Nilai AKHLAK: Studi Kasus",
+          "summary": "Enam nilai inti AKHLAK dan cara memilih nilai yang paling langsung tercermin pada situasi soal.",
+          "kind": "video",
+          "videoUrl": "/media/lessons/akhlaq-studi-kasus.mp4",
+          "posterUrl": "/media/lessons/akhlaq-studi-kasus-poster.jpg",
+          "content": "## Ringkasan materi\n- Enam nilai inti: Amanah, Kompeten, Harmonis, Loyal, Adaptif, Kolaboratif.\n- Pada studi kasus, pilih nilai yang paling langsung tercermin pada tindakan tokoh.\n\n## Contoh\nPegawai melaporkan kelebihan pembayaran vendor kepada atasan menunjukkan nilai Amanah.",
+          "durationSeconds": 24,
+          "sortOrder": 1
+        },
+        {
+          "id": "les-ebook-akhlak",
+          "title": "E-book: AKHLAK dalam Praktik Kerja",
+          "summary": "Panduan menerapkan setiap nilai AKHLAK pada situasi kerja sehari-hari.",
+          "kind": "ebook",
+          "content": "## Amanah\n- Menjaga kepercayaan dan tidak menyalahgunakan wewenang.\n\n## Kompeten\n- Terus belajar agar hasil kerja sesuai standar terbaik.\n\n## Harmonis\n- Menjaga hubungan kerja yang kondusif dan menghargai perbedaan.\n\n## Loyal\n- Menjaga komitmen dan kerahasiaan organisasi.\n\n## Adaptif\n- Cepat menyesuaikan diri dengan perubahan cara kerja.\n\n## Kolaboratif\n- Bekerja sama dan saling mendukung dalam satu tim.",
+          "durationSeconds": 300,
+          "sortOrder": 2
+        }
+      ]
+    },
+    {
+      "id": "mod-intensif-inggris",
+      "productSlug": "kelas-intensif",
+      "title": "Modul 5 · Bahasa Inggris",
+      "description": "Strategi reading comprehension, grammar, dan vocabulary untuk soal berbahasa Inggris.",
+      "sortOrder": 5,
+      "lessons": [
+        {
+          "id": "les-inggris-reading",
+          "title": "Reading Comprehension: Strategi Cepat",
+          "summary": "Baca pertanyaan lebih dulu, cari kata kunci, lalu waspadai pilihan yang benar sebagian.",
+          "kind": "video",
+          "videoUrl": "/media/lessons/inggris-reading.mp4",
+          "posterUrl": "/media/lessons/inggris-reading-poster.jpg",
+          "content": "## Ringkasan materi\n- Baca pertanyaan sebelum teks agar pencarian kata kunci lebih terarah.\n- Tandai kalimat topik untuk menemukan gagasan utama paragraf.\n\n## Jebakan umum\n- Pilihan yang benar sebagian.\n- Pilihan yang terlalu luas atau terlalu sempit.",
+          "durationSeconds": 24,
+          "sortOrder": 1
+        },
+        {
+          "id": "les-ebook-inggris",
+          "title": "E-book: Grammar & Vocabulary Praktis",
+          "summary": "Pola grammar yang sering diuji dan daftar kosakata bisnis yang sering muncul.",
+          "kind": "ebook",
+          "content": "## Grammar yang sering diuji\n- \"Used to + verb 1\" untuk kebiasaan masa lalu.\n- Subjek-verba harus sesuai: the data shows, the trends are rising.\n- Hindari negasi ganda seperti \"doesn't know nothing\".\n\n## Vocabulary bisnis\n- concise = singkat dan padat.\n- deadline = tenggat waktu.\n- approval = persetujuan.\n- reimbursement = penggantian biaya.\n\n## Latihan\n- Terjemahkan pengumuman resmi singkat, lalu cocokkan maknanya dengan pilihan jawaban.",
+          "durationSeconds": 340,
+          "sortOrder": 2
+        }
+      ]
+    },
+    {
+      "id": "mod-latihan-numerik",
+      "productSlug": "paket-latihan",
+      "title": "Modul 1 · Strategi Latihan Numerik",
+      "description": "Cara berlatih numerik secara terukur: mengenali tipe soal dan mengevaluasi kesalahan.",
+      "sortOrder": 1,
+      "lessons": [
+        {
+          "id": "les-ebook-latihan-numerik-1",
+          "title": "E-book: Peta Tipe Soal Numerik",
+          "summary": "Klasifikasi soal numerik beserta tingkat kesulitan dan strategi pengerjaannya.",
+          "kind": "ebook",
+          "content": "## Tipe soal\n- Aritmetika dasar: operasi bilangan dan pecahan.\n- Persentase & diskon: perubahan nilai dari harga awal.\n- Perbandingan: senilai dan berbalik nilai.\n- Deret & pola: selisih, rasio, dan pola bertingkat.\n- Soal cerita: kecepatan, pekerjaan bersama, dan campuran.\n\n## Strategi\n- Kerjakan tipe yang paling cepat lebih dulu.\n- Tandai soal yang butuh hitungan panjang untuk dikerjakan di akhir.",
+          "durationSeconds": 320,
+          "sortOrder": 1
+        },
+        {
+          "id": "les-ebook-latihan-numerik-2",
+          "title": "E-book: Analisis Kesalahan Numerik",
+          "summary": "Pola kesalahan yang paling sering terjadi dan cara memperbaikinya sebelum tryout.",
+          "kind": "ebook",
+          "content": "## Kesalahan umum\n- Salah membaca satuan (jam vs menit, km vs meter).\n- Menghitung rata-rata dari rata-rata, bukan dari total nilai.\n- Tertukar antara perbandingan senilai dan berbalik nilai.\n\n## Cara memperbaiki\n- Tuliskan informasi yang diketahui dalam bentuk tabel singkat.\n- Periksa kembali langkah terakhir dengan perkiraan kasar.\n- Catat soal yang salah pada jurnal latihan mingguan.",
+          "durationSeconds": 300,
+          "sortOrder": 2
+        }
+      ]
+    },
+    {
+      "id": "mod-latihan-verbal",
+      "productSlug": "paket-latihan",
+      "title": "Modul 2 · Strategi Latihan Verbal",
+      "description": "Melatih kecepatan membaca dan ketepatan memilih pasangan kata.",
+      "sortOrder": 2,
+      "lessons": [
+        {
+          "id": "les-ebook-latihan-verbal",
+          "title": "E-book: Latihan Verbal Terarah",
+          "summary": "Rutinitas latihan harian untuk analogi, sinonim, antonim, dan pemahaman bacaan.",
+          "kind": "ebook",
+          "content": "## Rutinitas 20 menit\n- 5 menit: 10 soal analogi tanpa melihat kunci.\n- 5 menit: periksa jawaban dan catat jenis hubungan yang salah.\n- 5 menit: satu paragraf bacaan, tentukan gagasan utama.\n- 5 menit: ulangi kosakata yang masih salah.\n\n## Target\n- Akurasi minimal 80% sebelum menambah tingkat kesulitan.\n- Kecepatan rata-rata di bawah 45 detik per soal.",
+          "durationSeconds": 310,
+          "sortOrder": 1
+        }
+      ]
+    },
+    {
+      "id": "mod-latihan-simulasi",
+      "productSlug": "paket-latihan",
+      "title": "Modul 3 · Manajemen Waktu Simulasi",
+      "description": "Menyusun strategi waktu dan alur pengerjaan saat mengikuti tryout gaya CBT.",
+      "sortOrder": 3,
+      "lessons": [
+        {
+          "id": "les-ebook-latihan-simulasi",
+          "title": "E-book: Strategi Waktu Tryout",
+          "summary": "Membagi alokasi waktu per subtes dan memutuskan kapan harus melewati soal.",
+          "kind": "ebook",
+          "content": "## Sebelum mulai\n- Pastikan koneksi stabil dan perangkat dalam mode fokus.\n- Catat alokasi waktu tiap subtes di kertas coretan.\n\n## Saat mengerjakan\n- Kerjakan soal yang mudah lebih dulu di dalam subtes yang sama.\n- Lewati soal yang melewati 90 detik; tandai untuk dikerjakan ulang.\n- Sisakan 10% waktu untuk memeriksa jawaban kosong.\n\n## Setelah selesai\n- Baca pembahasan dan catat kategori dengan skor terendah.\n- Jadwalkan ulangan materi untuk kategori tersebut.",
+          "durationSeconds": 330,
+          "sortOrder": 1
+        }
+      ]
+    }
+  ]
+}

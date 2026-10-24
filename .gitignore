@@ -1,9 +1,11 @@
 # binaries
+# Pola diberi garis miring depan agar hanya mengabaikan berkas hasil build di
+# root, bukan folder sumber bernama sama (internal/seed, cmd/seed, cmd/migrate).
 /bin/
 /tmp/
-be-bumn-academy
-migrate
-seed
+/be-bumn-academy
+/migrate
+/seed
 
 # env
 .env

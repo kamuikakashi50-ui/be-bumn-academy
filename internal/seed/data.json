@@ -1,0 +1,908 @@
+{
+  "users": [
+    {
+      "name": "Peserta Demo",
+      "email": "peserta@bumnacademy.id",
+      "password": "peserta123",
+      "role": "peserta",
+      "program": "Paket Simulasi & Evaluasi",
+      "referralCode": "ILHAM10"
+    },
+    {
+      "name": "Admin Akademik",
+      "email": "admin@bumnacademy.id",
+      "password": "admin123",
+      "role": "admin",
+      "program": "Tim Akademik",
+      "referralCode": "ADMINAKADEMIK"
+    }
+  ],
+  "programs": [
+    {
+      "slug": "kelas-intensif",
+      "name": "Kelas Intensif",
+      "tagline": "Pendalaman materi terstruktur dari dasar hingga siap latihan.",
+      "audience": "Fresh graduate & pekerja yang mulai dari nol",
+      "format": "Video on-demand + e-book",
+      "duration": "Akses 6 bulan",
+      "features": [
+        "Modul video per subtes",
+        "E-book rangkuman materi",
+        "Kuis pemahaman tiap bab",
+        "Rangkuman cheat-sheet"
+      ],
+      "sortOrder": 1
+    },
+    {
+      "slug": "paket-latihan",
+      "name": "Paket Latihan Soal",
+      "tagline": "Bank soal latihan dengan pembahasan tertulis yang rapi.",
+      "audience": "Peserta yang sudah paham dasar dan ingin banyak latihan",
+      "format": "Latihan online mandiri",
+      "duration": "Akses 3 bulan",
+      "features": [
+        "Ratusan soal latihan per kategori",
+        "Pembahasan tiap soal",
+        "Filter per topik & tingkat kesulitan",
+        "Catatan progres latihan"
+      ],
+      "sortOrder": 2
+    },
+    {
+      "slug": "kelas-live",
+      "name": "Kelas Live",
+      "tagline": "Belajar langsung bersama pengajar dengan sesi tanya jawab.",
+      "audience": "Peserta yang butuh arahan dan interaksi langsung",
+      "format": "Live online terjadwal",
+      "duration": "8 sesi per batch",
+      "features": [
+        "Sesi live interaktif",
+        "Rekaman kelas tersedia",
+        "Diskusi soal bersama pengajar",
+        "Grup belajar peserta"
+      ],
+      "highlighted": true,
+      "sortOrder": 3
+    },
+    {
+      "slug": "simulasi-evaluasi",
+      "name": "Paket Simulasi & Evaluasi",
+      "tagline": "Simulasi gaya CBT lengkap dengan analisis hasil belajar.",
+      "audience": "Peserta yang ingin mengukur kesiapan sebelum seleksi",
+      "format": "Tryout online berseri",
+      "duration": "Akses 3 bulan",
+      "features": [
+        "Simulasi per subtes dengan timer",
+        "Analisis skor per kategori",
+        "Leaderboard peserta",
+        "Pembahasan & ulasan konsep"
+      ],
+      "sortOrder": 4
+    }
+  ],
+  "materiCategories": [
+    {
+      "id": "tkd",
+      "label": "Tes Kemampuan Dasar",
+      "description": "Penguasaan dasar numerik, verbal, dan logika yang umum muncul pada tahap awal seleksi. Cakupan mengikuti pengumuman resmi tiap periode rekrutmen.",
+      "topics": [
+        "Penalaran numerik & aritmetika",
+        "Pemahaman bacaan & verbal",
+        "Logika analitis",
+        "Deret angka & pola"
+      ],
+      "sortOrder": 1
+    },
+    {
+      "id": "kognitif",
+      "label": "Penalaran Kognitif",
+      "description": "Latihan berpikir sistematis untuk soal figural, silogisme, dan penalaran kontekstual yang menguji cara mengambil keputusan.",
+      "topics": [
+        "Silogisme & penarikan kesimpulan",
+        "Penalaran figural",
+        "Analisis pernyataan",
+        "Studi kasus singkat"
+      ],
+      "sortOrder": 2
+    },
+    {
+      "id": "akhlak",
+      "label": "Nilai AKHLAK & Wawasan",
+      "description": "Pemahaman nilai-nilai inti AKHLAK dan wawasan kebangsaan, disiapkan untuk jalur seleksi yang mencantumkan kategori ini.",
+      "topics": [
+        "Enam nilai inti AKHLAK",
+        "Penerapan nilai dalam studi kasus",
+        "Wawasan kebangsaan dasar",
+        "Etika profesional"
+      ],
+      "sortOrder": 3
+    },
+    {
+      "id": "inggris",
+      "label": "Bahasa Inggris",
+      "description": "Latihan reading comprehension, struktur kalimat, dan kosakata untuk posisi atau perusahaan yang mensyaratkan kemampuan bahasa Inggris.",
+      "topics": [
+        "Reading comprehension",
+        "Grammar & structure",
+        "Vocabulary in context",
+        "Error recognition"
+      ],
+      "sortOrder": 4
+    }
+  ],
+  "products": [
+    {
+      "slug": "kelas-intensif",
+      "name": "Kelas Intensif",
+      "description": "Pendalaman materi terstruktur dari dasar hingga siap latihan, lengkap dengan video per subtes, e-book, dan kuis pemahaman.",
+      "price": 399000,
+      "type": "program",
+      "includes": [
+        "Modul video per subtes",
+        "E-book rangkuman materi",
+        "Kuis pemahaman tiap bab",
+        "Ruang kelas digital dengan progres belajar"
+      ],
+      "badge": "Terpopuler",
+      "sortOrder": 1
+    },
+    {
+      "slug": "paket-latihan",
+      "name": "Paket Latihan Soal",
+      "description": "Bank soal latihan dengan pembahasan tertulis dan tryout premium untuk mengukur kesiapan.",
+      "price": 199000,
+      "type": "program",
+      "includes": [
+        "Ratusan soal latihan per kategori",
+        "Pembahasan tiap soal",
+        "Filter per topik & tingkat kesulitan",
+        "Akses paket tryout premium"
+      ],
+      "sortOrder": 2
+    },
+    {
+      "slug": "kelas-live",
+      "name": "Kelas Live",
+      "description": "Kelas live terjadwal bersama pengajar, dilengkapi rekaman dan tryout khusus bahasa Inggris.",
+      "price": 299000,
+      "type": "program",
+      "includes": [
+        "8 sesi live per batch",
+        "Rekaman kelas tersedia",
+        "Sesi tanya jawab bersama pengajar",
+        "Grup belajar peserta"
+      ],
+      "badge": "Batch terbatas",
+      "sortOrder": 3
+    },
+    {
+      "slug": "tryout-demo",
+      "name": "Tryout Demo (Gratis)",
+      "description": "Simulasi gaya CBT dua subtes dengan pembahasan lengkap dan analisis skor per kategori.",
+      "price": 0,
+      "type": "tryout",
+      "includes": [
+        "1 paket simulasi gratis",
+        "Pembahasan tiap soal",
+        "Analisis skor per kategori"
+      ],
+      "badge": "Gratis",
+      "sortOrder": 4
+    }
+  ],
+  "paymentMethods": [
+    {
+      "id": "qris",
+      "label": "QRIS (semua e-wallet & m-banking)",
+      "channel": "QRIS",
+      "fee": 0,
+      "sortOrder": 1
+    },
+    {
+      "id": "va-bca",
+      "label": "Virtual Account BCA",
+      "channel": "Transfer bank",
+      "fee": 0,
+      "sortOrder": 2
+    },
+    {
+      "id": "va-mandiri",
+      "label": "Virtual Account Mandiri",
+      "channel": "Transfer bank",
+      "fee": 0,
+      "sortOrder": 3
+    },
+    {
+      "id": "gopay",
+      "label": "GoPay / e-wallet",
+      "channel": "E-wallet",
+      "fee": 2500,
+      "sortOrder": 4
+    }
+  ],
+  "vouchers": [
+    {
+      "code": "MULAI20",
+      "label": "Diskon 20% untuk pendaftaran awal",
+      "type": "percent",
+      "value": 20,
+      "minPurchase": 0,
+      "maxUses": 500
+    },
+    {
+      "code": "HEMAT50",
+      "label": "Potongan Rp50.000 untuk paket kelas",
+      "type": "fixed",
+      "value": 50000,
+      "minPurchase": 250000
+    },
+    {
+      "code": "NUSANTARA15",
+      "label": "Diskon 15% kelas live batch terbaru",
+      "type": "percent",
+      "value": 15,
+      "minPurchase": 100000,
+      "maxUses": 200
+    }
+  ],
+  "questions": [
+    {
+      "id": "num-01",
+      "bankKey": "numerik",
+      "text": "Sebuah toko memberi diskon 25% untuk baju seharga Rp240.000. Berapa harga yang harus dibayar?",
+      "options": ["Rp180.000", "Rp185.000", "Rp190.000", "Rp200.000"],
+      "answerIndex": 0,
+      "explanation": "Diskon 25% dari Rp240.000 adalah Rp60.000, sehingga harga bayar Rp240.000 - Rp60.000 = Rp180.000.",
+      "difficulty": "mudah",
+      "position": 1
+    },
+    {
+      "id": "num-02",
+      "bankKey": "numerik",
+      "text": "Perhatikan deret 3, 7, 15, 31, ... Tentukan dua suku berikutnya.",
+      "options": ["62 dan 126", "63 dan 127", "64 dan 128", "63 dan 126"],
+      "answerIndex": 1,
+      "explanation": "Pola tiap suku adalah dikali dua lalu ditambah satu: 3x2+1=7, 7x2+1=15, 15x2+1=31, 31x2+1=63, 63x2+1=127.",
+      "difficulty": "sedang",
+      "position": 2
+    },
+    {
+      "id": "num-03",
+      "bankKey": "numerik",
+      "text": "Jika 5 pekerja menyelesaikan sebuah proyek dalam 8 hari, berapa hari yang dibutuhkan 8 pekerja untuk pekerjaan yang sama?",
+      "options": ["4 hari", "5 hari", "6 hari", "7 hari"],
+      "answerIndex": 1,
+      "explanation": "Perbandingan berbalik nilai: total pekerjaan 5 x 8 = 40 hari-kerja, dibagi 8 pekerja menjadi 5 hari.",
+      "difficulty": "sedang",
+      "position": 3
+    },
+    {
+      "id": "num-04",
+      "bankKey": "numerik",
+      "text": "Rata-rata nilai 6 peserta adalah 72. Setelah satu peserta baru bergabung, rata-ratanya menjadi 74. Berapa nilai peserta baru tersebut?",
+      "options": ["82", "84", "86", "88"],
+      "answerIndex": 2,
+      "explanation": "Total awal 6 x 72 = 432, total baru 7 x 74 = 518, sehingga nilai peserta baru 518 - 432 = 86.",
+      "difficulty": "sedang",
+      "position": 4
+    },
+    {
+      "id": "num-05",
+      "bankKey": "numerik",
+      "text": "Sebuah barang dijual Rp150.000 dengan keuntungan 25% dari harga beli. Berapa harga beli barang tersebut?",
+      "options": ["Rp112.500", "Rp120.000", "Rp125.000", "Rp130.000"],
+      "answerIndex": 1,
+      "explanation": "Harga jual sama dengan 125% harga beli, sehingga harga beli = Rp150.000 / 1,25 = Rp120.000.",
+      "difficulty": "sedang",
+      "position": 5
+    },
+    {
+      "id": "num-06",
+      "bankKey": "numerik",
+      "text": "Perbandingan uang Andi dan Budi adalah 3 : 5. Jika jumlah uang keduanya Rp400.000, berapa uang Budi?",
+      "options": ["Rp150.000", "Rp200.000", "Rp240.000", "Rp250.000"],
+      "answerIndex": 3,
+      "explanation": "Jumlah perbandingan 3 + 5 = 8, satu bagian Rp400.000 / 8 = Rp50.000, sehingga uang Budi 5 x Rp50.000 = Rp250.000.",
+      "difficulty": "mudah",
+      "position": 6
+    },
+    {
+      "id": "num-07",
+      "bankKey": "numerik",
+      "text": "Lanjutkan deret berikut: 2, 6, 12, 20, 30, ...",
+      "options": ["40", "42", "44", "46"],
+      "answerIndex": 1,
+      "explanation": "Selisih antar suku bertambah dua: 4, 6, 8, 10, sehingga suku berikutnya 30 + 12 = 42.",
+      "difficulty": "mudah",
+      "position": 7
+    },
+    {
+      "id": "num-08",
+      "bankKey": "numerik",
+      "text": "Tabungan Rp5.000.000 memperoleh bunga tunggal 6% per tahun. Berapa saldo tabungan setelah 8 bulan?",
+      "options": ["Rp5.150.000", "Rp5.200.000", "Rp5.240.000", "Rp5.300.000"],
+      "answerIndex": 1,
+      "explanation": "Bunga 8 bulan = 5.000.000 x 6% x 8/12 = 200.000, sehingga saldo menjadi Rp5.200.000.",
+      "difficulty": "sedang",
+      "position": 8
+    },
+    {
+      "id": "num-09",
+      "bankKey": "numerik",
+      "text": "Jika 3/4 dari suatu bilangan adalah 60, berapa nilai 2/5 dari bilangan tersebut?",
+      "options": ["24", "28", "32", "36"],
+      "answerIndex": 2,
+      "explanation": "Bilangan tersebut adalah 60 x 4/3 = 80, sehingga 2/5 x 80 = 32.",
+      "difficulty": "sedang",
+      "position": 9
+    },
+    {
+      "id": "num-10",
+      "bankKey": "numerik",
+      "text": "Sebuah kereta menempuh jarak 240 km dalam 3 jam. Berapa kecepatan rata-ratanya?",
+      "options": ["60 km/jam", "70 km/jam", "80 km/jam", "90 km/jam"],
+      "answerIndex": 2,
+      "explanation": "Kecepatan rata-rata = jarak / waktu = 240 km / 3 jam = 80 km/jam.",
+      "difficulty": "mudah",
+      "position": 10
+    },
+    {
+      "id": "num-11",
+      "bankKey": "numerik",
+      "text": "Harga tiket naik 20% dari harga sebelumnya Rp250.000. Berapa harga tiket sekarang?",
+      "options": ["Rp270.000", "Rp280.000", "Rp290.000", "Rp300.000"],
+      "answerIndex": 3,
+      "explanation": "Kenaikan 20% dari Rp250.000 adalah Rp50.000, sehingga harga baru Rp250.000 + Rp50.000 = Rp300.000.",
+      "difficulty": "mudah",
+      "position": 11
+    },
+    {
+      "id": "num-12",
+      "bankKey": "numerik",
+      "text": "Dalam sebuah kelas, 40% siswa adalah laki-laki. Jika jumlah seluruh siswa 45 orang, berapa jumlah siswa perempuan?",
+      "options": ["18 orang", "24 orang", "27 orang", "30 orang"],
+      "answerIndex": 2,
+      "explanation": "Siswa perempuan 60% dari 45 = 0,6 x 45 = 27 orang.",
+      "difficulty": "mudah",
+      "position": 12
+    },
+    {
+      "id": "ver-01",
+      "bankKey": "verbal",
+      "text": "MANDIRI : SWATANTRA = ...",
+      "options": ["PINTAR : CERDAS", "CEPAT : LAMBAT", "BESAR : KECIL", "KAYA : MISKIN"],
+      "answerIndex": 0,
+      "explanation": "Pasangan pada soal merupakan sinonim (mandiri = swatantra), sehingga jawabannya adalah pasangan yang juga bersinonim: pintar = cerdas.",
+      "difficulty": "mudah",
+      "position": 1
+    },
+    {
+      "id": "ver-02",
+      "bankKey": "verbal",
+      "text": "DOKTER : PASIEN = ...",
+      "options": ["GURU : MURID", "PETANI : SAWAH", "PILOT : PESAWAT", "PENULIS : BUKU"],
+      "answerIndex": 0,
+      "explanation": "Dokter melayani pasien, sebagaimana guru melayani murid. Pilihan lain menghubungkan pelaku dengan alat atau objek kerja.",
+      "difficulty": "mudah",
+      "position": 2
+    },
+    {
+      "id": "ver-03",
+      "bankKey": "verbal",
+      "text": "Antonim dari kata PROLETAR adalah ...",
+      "options": ["Bangsawan", "Pekerja", "Rakyat", "Buruh"],
+      "answerIndex": 0,
+      "explanation": "Proletar berarti golongan pekerja yang tidak memiliki modal, sehingga lawan katanya adalah bangsawan (golongan pemilik modal atau berkedudukan tinggi).",
+      "difficulty": "sedang",
+      "position": 3
+    },
+    {
+      "id": "ver-04",
+      "bankKey": "verbal",
+      "text": "Sinonim dari kata INSENTIF adalah ...",
+      "options": ["Bonus", "Denda", "Pajak", "Utang"],
+      "answerIndex": 0,
+      "explanation": "Insentif adalah tambahan imbalan yang diberikan untuk mendorong kinerja, sehingga sinonimnya adalah bonus.",
+      "difficulty": "mudah",
+      "position": 4
+    },
+    {
+      "id": "ver-05",
+      "bankKey": "verbal",
+      "text": "GEMPA : SKALA RICHTER = ...",
+      "options": ["SUHU : CELSIUS", "PANAS : API", "HUJAN : PAYUNG", "ANGIN : DAUN"],
+      "answerIndex": 0,
+      "explanation": "Skala Richter adalah satuan pengukur kekuatan gempa, sebagaimana Celsius adalah satuan pengukur suhu.",
+      "difficulty": "sedang",
+      "position": 5
+    },
+    {
+      "id": "ver-06",
+      "bankKey": "verbal",
+      "text": "Antonim dari kata ABSTRAK adalah ...",
+      "options": ["Konkret", "Samar", "Umum", "Rumit"],
+      "answerIndex": 0,
+      "explanation": "Abstrak berarti tidak berwujud atau hanya berupa gagasan, sehingga antonimnya adalah konkret (nyata dan dapat diamati).",
+      "difficulty": "sedang",
+      "position": 6
+    },
+    {
+      "id": "ver-07",
+      "bankKey": "verbal",
+      "text": "AIR : HAUS = ...",
+      "options": ["MAKANAN : LAPAR", "TIDUR : KANTUK", "OBAT : SAKIT", "OLAH RAGA : SEHAT"],
+      "answerIndex": 0,
+      "explanation": "Air adalah kebutuhan yang menghilangkan haus, sebagaimana makanan adalah kebutuhan yang menghilangkan lapar.",
+      "difficulty": "mudah",
+      "position": 7
+    },
+    {
+      "id": "ver-08",
+      "bankKey": "verbal",
+      "text": "Sinonim dari kata EVALUASI adalah ...",
+      "options": ["Penilaian", "Perencanaan", "Penghapusan", "Penggandaan"],
+      "answerIndex": 0,
+      "explanation": "Evaluasi berarti kegiatan menilai atau mengukur sesuatu, sehingga sinonimnya adalah penilaian.",
+      "difficulty": "mudah",
+      "position": 8
+    },
+    {
+      "id": "ver-09",
+      "bankKey": "verbal",
+      "text": "PADI : BERAS = ...",
+      "options": ["GANDUM : TEPUNG", "SAWAH : TANAH", "PETANI : CANGKUL", "NASI : PIRING"],
+      "answerIndex": 0,
+      "explanation": "Beras adalah hasil pengolahan padi, sebagaimana tepung adalah hasil pengolahan gandum.",
+      "difficulty": "sedang",
+      "position": 9
+    },
+    {
+      "id": "ver-10",
+      "bankKey": "verbal",
+      "text": "Bacalah pernyataan berikut: \"Kualitas sebuah laporan tidak ditentukan oleh panjangnya.\" Pernyataan yang paling sesuai adalah ...",
+      "options": [
+        "Laporan yang ringkas dapat lebih berkualitas daripada laporan yang panjang.",
+        "Laporan harus selalu dibuat sesingkat mungkin tanpa memperhatikan isi.",
+        "Semakin panjang laporan, semakin rendah kualitasnya.",
+        "Laporan yang panjang tidak pernah berkualitas."
+      ],
+      "answerIndex": 0,
+      "explanation": "Pernyataan menegaskan panjang bukan penentu kualitas, sehingga kesimpulan yang tepat adalah laporan ringkas dapat lebih berkualitas; pilihan lain bersifat terlalu umum dan berlebihan.",
+      "difficulty": "sulit",
+      "position": 10
+    },
+    {
+      "id": "ana-01",
+      "bankKey": "analitis",
+      "text": "Semua pegawai tetap mengikuti asuransi kesehatan. Sebagian peserta asuransi kesehatan adalah pekerja lepas. Kesimpulan yang pasti benar adalah ...",
+      "options": [
+        "Sebagian pekerja lepas mengikuti asuransi kesehatan.",
+        "Semua pekerja lepas adalah pegawai tetap.",
+        "Sebagian pegawai tetap adalah pekerja lepas.",
+        "Tidak ada pegawai tetap yang menjadi pekerja lepas."
+      ],
+      "answerIndex": 0,
+      "explanation": "Dari premis \"sebagian peserta asuransi adalah pekerja lepas\" dapat dibalik menjadi \"sebagian pekerja lepas adalah peserta asuransi\". Pilihan lain menambahkan informasi yang tidak ada pada premis.",
+      "difficulty": "sedang",
+      "position": 1
+    },
+    {
+      "id": "ana-02",
+      "bankKey": "analitis",
+      "text": "Semua karyawan baru wajib mengikuti pelatihan dasar. Rani adalah karyawan baru. Kesimpulan yang tepat adalah ...",
+      "options": [
+        "Rani belum tentu mengikuti pelatihan dasar.",
+        "Rani hanya mengikuti pelatihan bila diminta atasan.",
+        "Rani wajib mengikuti pelatihan dasar.",
+        "Rani tidak wajib mengikuti pelatihan dasar."
+      ],
+      "answerIndex": 2,
+      "explanation": "Ini penarikan kesimpulan langsung (modus ponens): premis umum berlaku untuk setiap anggota, dan Rani adalah anggota kelompok tersebut.",
+      "difficulty": "mudah",
+      "position": 2
+    },
+    {
+      "id": "ana-03",
+      "bankKey": "analitis",
+      "text": "Jika hujan turun, maka jalan menjadi licin. Ternyata jalan tidak licin. Kesimpulan yang tepat adalah ...",
+      "options": [
+        "Hujan turun tetapi sebentar.",
+        "Hujan tidak turun.",
+        "Jalan sedang diperbaiki.",
+        "Tidak dapat disimpulkan apa pun."
+      ],
+      "answerIndex": 1,
+      "explanation": "Ini modus tollens: karena akibat (jalan licin) tidak terjadi, maka sebab (hujan turun) tidak terjadi.",
+      "difficulty": "sedang",
+      "position": 3
+    },
+    {
+      "id": "ana-04",
+      "bankKey": "analitis",
+      "text": "Beberapa peserta lulus tes. Semua yang lulus tes menerima sertifikat. Kesimpulan yang pasti benar adalah ...",
+      "options": [
+        "Semua peserta menerima sertifikat.",
+        "Tidak ada peserta yang menerima sertifikat.",
+        "Beberapa peserta menerima sertifikat.",
+        "Peserta yang tidak lulus juga menerima sertifikat."
+      ],
+      "answerIndex": 2,
+      "explanation": "Karena ada peserta yang lulus dan setiap yang lulus menerima sertifikat, maka pasti ada peserta yang menerima sertifikat.",
+      "difficulty": "sedang",
+      "position": 4
+    },
+    {
+      "id": "ana-05",
+      "bankKey": "analitis",
+      "text": "Tidak ada pegawai tetap yang boleh merangkap jabatan di perusahaan lain. Budi merangkap jabatan di perusahaan lain. Kesimpulan yang tepat adalah ...",
+      "options": [
+        "Budi pegawai tetap yang dikecualikan.",
+        "Budi boleh merangkap karena ada izin.",
+        "Budi akan segera menjadi pegawai tetap.",
+        "Budi bukan pegawai tetap."
+      ],
+      "answerIndex": 3,
+      "explanation": "Karena semua pegawai tetap tidak merangkap jabatan, sedangkan Budi merangkap jabatan, maka Budi bukan pegawai tetap (modus tollens).",
+      "difficulty": "sedang",
+      "position": 5
+    },
+    {
+      "id": "ana-06",
+      "bankKey": "analitis",
+      "text": "Jika sebuah bilangan lebih besar dari 5, maka bilangan itu lebih besar dari 2. Diketahui bilangan X tidak lebih besar dari 2. Kesimpulan yang tepat adalah ...",
+      "options": [
+        "X lebih besar dari 5.",
+        "X tidak lebih besar dari 5.",
+        "X sama dengan 5.",
+        "X tidak dapat ditentukan."
+      ],
+      "answerIndex": 1,
+      "explanation": "Karena X tidak lebih besar dari 2, maka X juga tidak lebih besar dari 5 (modus tollens pada implikasi bilangan > 5 ⇒ bilangan > 2).",
+      "difficulty": "sulit",
+      "position": 6
+    },
+    {
+      "id": "ana-07",
+      "bankKey": "analitis",
+      "text": "Rani lebih tinggi dari Sinta. Sinta lebih tinggi dari Umi. Dita lebih pendek dari Umi. Siapa yang paling pendek?",
+      "options": ["Rani", "Sinta", "Dita", "Umi"],
+      "answerIndex": 2,
+      "explanation": "Urutan tinggi dari yang tertinggi: Rani, Sinta, Umi, lalu Dita. Jadi yang paling pendek adalah Dita.",
+      "difficulty": "mudah",
+      "position": 7
+    },
+    {
+      "id": "ana-08",
+      "bankKey": "analitis",
+      "text": "Di ruang rapat, semua kursi berwarna cokelat. Beberapa kursi berbentuk bulat. Pernyataan yang pasti benar adalah ...",
+      "options": [
+        "Semua kursi bulat berwarna cokelat tua.",
+        "Beberapa benda berwarna cokelat berbentuk bulat.",
+        "Tidak ada kursi bulat yang berwarna cokelat.",
+        "Semua kursi cokelat berbentuk bulat."
+      ],
+      "answerIndex": 1,
+      "explanation": "Kursi bulat pasti berwarna cokelat karena semua kursi berwarna cokelat, sehingga ada benda berwarna cokelat yang berbentuk bulat.",
+      "difficulty": "sedang",
+      "position": 8
+    },
+    {
+      "id": "kog-01",
+      "bankKey": "kognitif",
+      "text": "Perhatikan pola berikut: segitiga, persegi, dua segitiga, dua persegi, tiga segitiga, ... Bentuk berikutnya adalah ...",
+      "options": ["tiga persegi", "empat segitiga", "dua segitiga", "satu persegi"],
+      "answerIndex": 0,
+      "explanation": "Pola berselang-seling antara segitiga dan persegi, dengan jumlah yang bertambah satu setiap dua langkah, sehingga setelah tiga segitiga muncul tiga persegi.",
+      "difficulty": "mudah",
+      "position": 1
+    },
+    {
+      "id": "kog-02",
+      "bankKey": "kognitif",
+      "text": "Semua laporan resmi ditandatangani pimpinan. Dokumen X tidak ditandatangani pimpinan. Kesimpulan yang tepat adalah ...",
+      "options": [
+        "Dokumen X adalah laporan resmi yang belum lengkap.",
+        "Dokumen X akan ditandatangani kemudian.",
+        "Dokumen X bukan laporan resmi.",
+        "Dokumen X adalah laporan tidak resmi yang tetap sah."
+      ],
+      "answerIndex": 2,
+      "explanation": "Modus tollens: karena syarat laporan resmi (tanda tangan pimpinan) tidak terpenuhi pada dokumen X, maka X bukan laporan resmi.",
+      "difficulty": "sedang",
+      "position": 2
+    },
+    {
+      "id": "kog-03",
+      "bankKey": "kognitif",
+      "text": "\"Perusahaan menambah anggaran pelatihan agar produktivitas karyawan meningkat.\" Asumsi yang mendasari pernyataan tersebut adalah ...",
+      "options": [
+        "Pelatihan berpengaruh terhadap peningkatan produktivitas.",
+        "Anggaran pelatihan selalu habis setiap tahun.",
+        "Produktivitas hanya dipengaruhi oleh teknologi.",
+        "Karyawan menuntut tambahan pelatihan."
+      ],
+      "answerIndex": 0,
+      "explanation": "Agar kebijakan itu masuk akal, harus diasumsikan ada hubungan antara pelatihan dan produktivitas; pilihan lain tidak diperlukan oleh pernyataan tersebut.",
+      "difficulty": "sedang",
+      "position": 3
+    },
+    {
+      "id": "kog-04",
+      "bankKey": "kognitif",
+      "text": "Rata-rata waktu respons layanan menurun dari 6 jam menjadi 2 jam, tetapi jumlah keluhan pelanggan justru meningkat. Simpulan yang paling tepat adalah ...",
+      "options": [
+        "Data keluhan pasti salah dicatat.",
+        "Pelanggan sengaja mencari kesalahan layanan.",
+        "Waktu respons bukan satu-satunya penentu kepuasan pelanggan.",
+        "Layanan harus kembali ke waktu respons 6 jam."
+      ],
+      "answerIndex": 2,
+      "explanation": "Kecepatan respons membaik tetapi keluhan naik, artinya masih ada faktor lain (misalnya kualitas penyelesaian atau kejelasan informasi) yang memengaruhi kepuasan pelanggan.",
+      "difficulty": "sulit",
+      "position": 4
+    },
+    {
+      "id": "kog-05",
+      "bankKey": "kognitif",
+      "text": "Lanjutkan pola huruf berikut: A, C, F, J, O, ...",
+      "options": ["T", "U", "V", "W"],
+      "answerIndex": 1,
+      "explanation": "Jarak antar huruf bertambah satu setiap langkah: A→C (2), C→F (3), F→J (4), J→O (5), sehingga O→U (6).",
+      "difficulty": "sedang",
+      "position": 5
+    },
+    {
+      "id": "kog-06",
+      "bankKey": "kognitif",
+      "text": "Seorang manajer harus memilih dua dari lima proyek dengan anggaran terbatas. Pendekatan pengambilan keputusan yang paling tepat adalah ...",
+      "options": [
+        "Memilih dua proyek yang diajukan paling awal.",
+        "Memilih proyek dengan anggaran terkecil agar semua tercakup.",
+        "Menilai dampak dan biaya setiap proyek, lalu memilih kombinasi dengan manfaat terbesar.",
+        "Menunda keputusan sampai anggaran bertambah."
+      ],
+      "answerIndex": 2,
+      "explanation": "Keputusan dengan sumber daya terbatas menuntut analisis biaya-manfaat agar hasil yang dipilih memberi nilai terbaik bagi organisasi.",
+      "difficulty": "sedang",
+      "position": 6
+    },
+    {
+      "id": "akh-01",
+      "bankKey": "akhlak",
+      "text": "Seorang pegawai menemukan kelebihan pembayaran dari vendor dan segera melaporkannya kepada atasan. Nilai inti AKHLAK yang paling tampak adalah ...",
+      "options": ["Amanah", "Kompeten", "Adaptif", "Kolaboratif"],
+      "answerIndex": 0,
+      "explanation": "Tindakan melaporkan kelebihan pembayaran menunjukkan sikap dapat dipercaya dan menjalankan tanggung jawab dengan jujur, yaitu nilai Amanah.",
+      "difficulty": "mudah",
+      "position": 1
+    },
+    {
+      "id": "akh-02",
+      "bankKey": "akhlak",
+      "text": "Tim harus mengejar tenggat sementara salah satu anggotanya baru bergabung dan belum berpengalaman. Nilai inti AKHLAK yang paling relevan adalah ...",
+      "options": ["Kompeten", "Kolaboratif", "Loyal", "Adaptif"],
+      "answerIndex": 1,
+      "explanation": "Membantu rekan baru agar tim tetap solid dan target tercapai mencerminkan nilai Kolaboratif, yaitu semangat saling mendukung dalam satu tim.",
+      "difficulty": "mudah",
+      "position": 2
+    },
+    {
+      "id": "akh-03",
+      "bankKey": "akhlak",
+      "text": "Pegawai mempelajari perangkat kerja baru agar prosesnya lebih cepat, walau bukan keharusan dari atasannya. Nilai inti AKHLAK yang tampak adalah ...",
+      "options": ["Loyal", "Harmonis", "Adaptif", "Amanah"],
+      "answerIndex": 2,
+      "explanation": "Inisiatif menyesuaikan diri dengan cara kerja baru dan terus belajar mencerminkan nilai Adaptif.",
+      "difficulty": "mudah",
+      "position": 3
+    },
+    {
+      "id": "akh-04",
+      "bankKey": "akhlak",
+      "text": "Enam nilai inti AKHLAK adalah ...",
+      "options": [
+        "Amanah, Kompeten, Harmonis, Loyal, Adaptif, Kolaboratif",
+        "Amanah, Kreatif, Humoris, Loyal, Agresif, Kompetitif",
+        "Amanah, Kompeten, Harmonis, Longgar, Adaptif, Kolektif",
+        "Adil, Kompeten, Harmonis, Loyal, Adaptif, Kolaboratif"
+      ],
+      "answerIndex": 0,
+      "explanation": "Nilai inti AKHLAK terdiri dari Amanah, Kompeten, Harmonis, Loyal, Adaptif, dan Kolaboratif.",
+      "difficulty": "mudah",
+      "position": 4
+    },
+    {
+      "id": "akh-05",
+      "bankKey": "akhlak",
+      "text": "Dua divisi berselisih soal prioritas kerja. Seorang pegawai mengajak keduanya bermusyawarah hingga suasana kerja kembali kondusif. Nilai inti AKHLAK yang tampak adalah ...",
+      "options": ["Kompeten", "Adaptif", "Harmonis", "Amanah"],
+      "answerIndex": 2,
+      "explanation": "Menjaga dan memulihkan hubungan kerja yang kondusif melalui musyawarah adalah wujud nilai Harmonis.",
+      "difficulty": "sedang",
+      "position": 5
+    },
+    {
+      "id": "eng-01",
+      "bankKey": "inggris",
+      "text": "Complete the sentence: \"She ____ to the office by bus before the new policy changed.\"",
+      "options": ["use to go", "used to go", "using to go", "uses to go"],
+      "answerIndex": 1,
+      "explanation": "\"Used to + verb 1\" dipakai untuk kebiasaan pada masa lalu, sehingga bentuk yang benar adalah \"used to go\".",
+      "difficulty": "sedang",
+      "position": 1
+    },
+    {
+      "id": "eng-02",
+      "bankKey": "inggris",
+      "text": "In the sentence \"Please keep your report concise\", the word concise is closest in meaning to ...",
+      "options": ["brief", "complicated", "delayed", "expensive"],
+      "answerIndex": 0,
+      "explanation": "Concise berarti singkat namun padat, sehingga sinonim terdekatnya adalah brief.",
+      "difficulty": "mudah",
+      "position": 2
+    },
+    {
+      "id": "eng-03",
+      "bankKey": "inggris",
+      "text": "Pilih kalimat yang benar secara tata bahasa.",
+      "options": [
+        "The data shows that the trend is increasing.",
+        "The data show that the trend are increasing.",
+        "The datas shows that the trend is increasing.",
+        "The data showing that the trend increase."
+      ],
+      "answerIndex": 0,
+      "explanation": "Pada bahasa Inggris bisnis modern, \"data\" lazim dipakai sebagai kata tunggal (diikuti \"shows\") dan klausa \"the trend is increasing\" sudah lengkap.",
+      "difficulty": "sulit",
+      "position": 3
+    },
+    {
+      "id": "eng-04",
+      "bankKey": "inggris",
+      "text": "Bacalah pengumuman berikut: \"Applications received after 31 March will not be considered for the current batch.\" Menurut pengumuman tersebut, pelamar yang melewati tenggat ...",
+      "options": [
+        "tetap akan dipertimbangkan pada batch saat ini",
+        "tidak akan dipertimbangkan pada batch saat ini",
+        "otomatis diterima pada batch berikutnya",
+        "dapat mengajukan ulang kapan saja tanpa syarat"
+      ],
+      "answerIndex": 1,
+      "explanation": "Kalimat \"will not be considered for the current batch\" menegaskan lamaran yang masuk setelah 31 Maret tidak dipertimbangkan pada batch saat ini.",
+      "difficulty": "sedang",
+      "position": 4
+    }
+  ],
+  "tryouts": [
+    {
+      "id": "to-demo-nasional",
+      "title": "Simulasi Nasional (Demo)",
+      "description": "Simulasi gaya CBT dua subtes dengan pembahasan lengkap dan analisis skor. Terbuka untuk semua peserta.",
+      "tier": "Gratis",
+      "attempts": 3,
+      "accessUntil": "Tanpa batas",
+      "sortOrder": 1,
+      "subtests": [
+        {
+          "name": "Penalaran Verbal",
+          "minutes": 10,
+          "banks": ["verbal"]
+        },
+        {
+          "name": "Penalaran Numerik",
+          "minutes": 12,
+          "banks": ["numerik"]
+        }
+      ]
+    },
+    {
+      "id": "to-tkd-01",
+      "title": "Tryout TKD Nasional #1",
+      "description": "Tryout lengkap tiga subtes: numerik, logika analitis, dan penalaran kognitif.",
+      "tier": "Premium",
+      "requiredProduct": "paket-latihan",
+      "attempts": 2,
+      "accessUntil": "Aktif 3 bulan sejak pembelian",
+      "sortOrder": 2,
+      "subtests": [
+        {
+          "name": "Penalaran Numerik",
+          "minutes": 15,
+          "banks": ["numerik"]
+        },
+        {
+          "name": "Logika Analitis",
+          "minutes": 12,
+          "banks": ["analitis"]
+        },
+        {
+          "name": "Penalaran Kognitif",
+          "minutes": 10,
+          "banks": ["kognitif"]
+        }
+      ]
+    },
+    {
+      "id": "to-tkd-02",
+      "title": "Tryout TKD Nasional #2",
+      "description": "Variasi soal numerik, verbal, dan analitis dengan tingkat kesulitan bertingkat.",
+      "tier": "Premium",
+      "requiredProduct": "kelas-intensif",
+      "attempts": 3,
+      "accessUntil": "Aktif 6 bulan sejak pembelian",
+      "sortOrder": 3,
+      "subtests": [
+        {
+          "name": "Penalaran Numerik",
+          "minutes": 15,
+          "banks": ["numerik"]
+        },
+        {
+          "name": "Penalaran Verbal",
+          "minutes": 12,
+          "banks": ["verbal"]
+        },
+        {
+          "name": "Logika Analitis",
+          "minutes": 12,
+          "banks": ["analitis"]
+        }
+      ]
+    },
+    {
+      "id": "to-akhlak-01",
+      "title": "Tryout AKHLAK & Wawasan",
+      "description": "Uji pemahaman nilai inti AKHLAK dan penalaran kognitif lewat studi kasus singkat.",
+      "tier": "Premium",
+      "requiredProduct": "kelas-intensif",
+      "attempts": 2,
+      "accessUntil": "Aktif 6 bulan sejak pembelian",
+      "sortOrder": 4,
+      "subtests": [
+        {
+          "name": "Nilai AKHLAK",
+          "minutes": 10,
+          "banks": ["akhlak"]
+        },
+        {
+          "name": "Penalaran Kognitif",
+          "minutes": 10,
+          "banks": ["kognitif"]
+        }
+      ]
+    },
+    {
+      "id": "to-inggris-01",
+      "title": "Tryout Bahasa Inggris",
+      "description": "Reading comprehension, grammar, dan vocabulary untuk posisi yang mensyaratkan bahasa Inggris.",
+      "tier": "Premium",
+      "requiredProduct": "kelas-live",
+      "attempts": 2,
+      "accessUntil": "Aktif 3 bulan sejak pembelian",
+      "sortOrder": 5,
+      "subtests": [
+        {
+          "name": "Reading & Structure",
+          "minutes": 12,
+          "banks": ["inggris"]
+        },
+        {
+          "name": "Penalaran Verbal",
+          "minutes": 10,
+          "banks": ["verbal"]
+        }
+      ]
+    }
+  ],
+  "enrollments": [
+    {
+      "email": "peserta@bumnacademy.id",
+      "productSlug": "kelas-intensif",
+      "source": "seed"
+    },
+    {
+      "email": "peserta@bumnacademy.id",
+      "productSlug": "tryout-demo",
+      "source": "seed"
+    }
+  ]
+}

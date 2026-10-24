@@ -90,6 +90,15 @@ be-bumn-academy/
 
 Alur dependensi satu arah: `handler → service → repository → database`.
 
+> **Kelengkapan berkas sumber.** Folder `cmd/migrate`, `cmd/seed`, dan
+> `internal/seed` sempat tidak ikut ter-commit karena pola `.gitignore` (`seed`
+> dan `migrate` tanpa garis miring depan cocok ke folder mana pun bernama sama),
+> sehingga `go build ./...` gagal dengan pesan
+> `no required module provides package .../internal/seed`. Pola itu kini dibatasi
+> ke root (`/be-bumn-academy`, `/migrate`, `/seed`) dan ketiga folder tersebut
+> sudah ter-versi, jadi `git clone` + `go build ./...` berhasil tanpa langkah
+> tambahan.
+
 ---
 
 ## 3. Migrasi & seed
@@ -126,6 +135,21 @@ Materi ruang kelas digital diambil dari `internal/seed/classroom.json` (8 modul,
 dibuat oleh `scripts/generate-media.sh` (Pillow merender slide, ffmpeg mengemas
 MP4 H.264 1280×720 + poster) sehingga peserta benar-benar memutar video asli.
 Direktori media dilayani pada `/api/v1/media/*` (lihat `MEDIA_DIR`).
+
+### Isi paket `internal/seed`
+
+| Berkas | Isi |
+| --- | --- |
+| `seed.go` | orkestrasi `seed.Run(ctx, db, cfg)` + upsert seluruh katalog memakai UUID deterministik (`uuid.NewSHA1`) agar seed berulang tidak membuat baris baru |
+| `data.go` | struktur JSON + `//go:embed data.json classroom.json` |
+| `learning.go` | jadwal kelas live (disimpan sebagai selisih jam dari waktu seed) & 6 rekaman kelas |
+| `data.json` | program, kategori materi, produk, metode bayar, voucher, 45 soal, 5 paket tryout, akun demo, enrollment demo |
+| `classroom.json` | 8 modul & 15 materi (6 video dari `media/lessons/` + 9 e-book yang dirender jadi PDF saat dibuka) |
+| `seed_test.go` | uji kontrak data: jumlah data, id unik, bank soal tiap subtes, produk wajib tiap paket, keberadaan berkas media, determinisme `stableID` |
+
+Seed dipanggil otomatis saat start (`SEED_ON_START=true`) maupun manual lewat
+`make seed` / `go run ./cmd/seed`. Seluruh operasi idempoten (upsert), sehingga
+aman dijalankan berulang — termasuk saat beberapa replika API start bersamaan.
 
 ### Akun demo
 
@@ -645,7 +669,7 @@ pembersihan balasan model, serta batas jumlah butir analisis.
 ok  internal/ai         ok  internal/cache      ok  internal/middleware
 ok  internal/models     ok  internal/pkg/apperror   ok  internal/pkg/bank
 ok  internal/pkg/midtrans   ok  internal/pkg/password   ok  internal/pkg/validator
-ok  internal/service
+ok  internal/seed       ok  internal/service
 ```
 
 ### Smoke test
@@ -653,10 +677,17 @@ ok  internal/service
 `scripts/smoke-test.sh` menjalankan alur lengkap: katalog → registrasi → refresh
 token → sesi tryout → autosave → submit (termasuk uji idempotensi) → riwayat &
 pembahasan → leaderboard → dashboard → checkout dengan voucher & referral →
-pembayaran → webhook → endpoint admin → import CSV → broadcast → validasi input.
+pembayaran → webhook bertanda tangan → endpoint admin → import CSV → broadcast →
+validasi input.
+
+Langkah webhook menghitung signature `SHA512(order_id + status_code +
+gross_amount + Server Key)` memakai kunci simulator lokal
+(`internal/pkg/midtrans.SandboxDemoServerKey`) sehingga jalur notifikasi tetap
+teruji tanpa akun Midtrans; satu pemeriksaan tambahan memastikan notifikasi
+dengan tanda tangan palsu ditolak `UNAUTHORIZED`.
 
 ```
-Lulus: 41, Gagal: 0
+Lulus: 42, Gagal: 0
 ```
 
 ### Uji mentor AI
