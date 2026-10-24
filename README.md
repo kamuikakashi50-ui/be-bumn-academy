@@ -849,6 +849,44 @@ Seluruh variabel ada di `.env.example`. Yang paling sering disesuaikan:
 
 ## 13. Troubleshooting
 
+**`lookup postgres on 127.0.0.53:53: read: connection refused` (ba-api restart terus)**
+Container tidak bisa me-resolve nama service `postgres`/`redis` karena
+`/etc/resolv.conf` di dalam container memakai stub resolver host
+(systemd-resolved `127.0.0.53`) — alamat itu tidak ada di dalam network namespace
+container, sehingga seluruh resolusi nama gagal.
+
+Cek dulu (harus muncul `nameserver 127.0.0.11` milik Docker):
+
+```bash
+docker run --rm alpine cat /etc/resolv.conf
+docker compose exec api getent hosts postgres
+cat /etc/docker/daemon.json            # pastikan tidak ada "dns": ["127.0.0.53", ...]
+readlink -f /etc/resolv.conf           # biasanya /run/systemd/resolve/stub-resolv.conf
+```
+
+Perbaikan (pilih salah satu):
+
+1. **Perbaiki DNS Docker di host** — hapus entri `dns` yang menunjuk `127.0.0.53`
+di `/etc/docker/daemon.json`, arahkan resolv.conf host ke resolver nyata, lalu
+mulai ulang daemon:
+
+   ```bash
+   sudo ln -sf /run/systemd/resolve/resolv.conf /etc/resolv.conf   # hindari stub 127.0.0.53
+   sudo systemctl restart systemd-resolved docker
+   docker compose up -d --force-recreate api
+   ```
+
+2. **Tanpa mengubah host** — jalankan dengan override yang mengarahkan nama
+service ke gateway host lewat `/etc/hosts` container (tidak memakai DNS):
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.host-gateway.yml up -d --build
+   ```
+
+   Override ini memakai port publikasi host (`POSTGRES_HOST_PORT`/`REDIS_HOST_PORT`,
+default `55432`/`56379`) sehingga tetap kompatibel dengan `.env` yang dipakai
+untuk menjalankan backend langsung di host.
+
 **`no required module provides package github.com/bumn-academy/be-bumn-academy/internal/seed`**
 Build context tidak memuat berkas sumber `internal/seed`, `cmd/seed`, atau
 `cmd/migrate`. Penyebab paling umum: pola `.gitignore` **tanpa garis miring**

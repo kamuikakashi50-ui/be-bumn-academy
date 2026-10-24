@@ -1,0 +1,27 @@
+# Override untuk host Linux yang DNS antar-container-nya tidak berfungsi.
+#
+# Gejala: ba-api restart terus dengan galat seperti
+#   database: gagal membuka koneksi: hostname resolving error:
+#   lookup postgres on 127.0.0.53:53: read udp ...->127.0.0.53:53: read: connection refused
+#
+# Penyebabnya: /etc/resolv.conf di dalam container memakai stub resolver host
+# (systemd-resolved 127.0.0.53) sehingga nama service `postgres`/`redis` tidak
+# bisa di-resolve. Cara paling bersih adalah memperbaiki DNS Docker di host
+# (lihat README bagian Troubleshooting). Bila tidak ingin mengubah konfigurasi
+# host, pakai override ini: nama service diarahkan ke gateway host lewat
+# /etc/hosts container (tanpa DNS sama sekali) dan port yang dipakai adalah port
+# host yang sudah dipublikasikan.
+#
+# Pakai:
+#   docker compose -f docker-compose.yml -f docker-compose.host-gateway.yml up -d --build
+services:
+  api:
+    environment:
+      # Nama tetap `postgres`/`redis`, tetapi /etc/hosts container mengarahkannya
+      # ke gateway host sehingga koneksi lewat port publikasi (55432/56379).
+      DB_HOST: postgres
+      DB_PORT: "${POSTGRES_HOST_PORT:-55432}"
+      REDIS_ADDR: "redis:${REDIS_HOST_PORT:-56379}"
+    extra_hosts:
+      - "postgres:host-gateway"
+      - "redis:host-gateway"
