@@ -17,6 +17,8 @@ const (
 	hrActiveWindowDays = 30
 	// hrAtRiskLimit membatasi jumlah peserta pada daftar pendampingan.
 	hrAtRiskLimit = 12
+	// hrTopLearnerLimit membatasi jumlah peserta pada daftar berprestasi.
+	hrTopLearnerLimit = 8
 	// hrSkillLimit membatasi jumlah baris profil kompetensi.
 	hrSkillLimit = 12
 	// hrTrendMonths adalah panjang tren aktivitas bulanan.
@@ -26,8 +28,8 @@ const (
 )
 
 // HRService menyusun analitik SDM (people analytics) untuk panel admin:
-// partisipasi peserta, kelengkapan belajar, kesiapan kompetensi, dan peserta
-// yang perlu pendampingan.
+// partisipasi peserta, kelengkapan belajar, kesiapan kompetensi, peserta
+// berprestasi, dan peserta yang perlu pendampingan.
 //
 // Seluruh angka dihitung dari data nyata backend (users, attempts, lesson
 // progress) — tidak ada data mock.
@@ -142,12 +144,31 @@ func (s *HRService) Analytics(ctx context.Context) (*dto.HRAnalyticsView, error)
 		})
 	}
 
+	topLearnerRows, err := s.attempts.TopLearners(ctx, hrTopLearnerLimit)
+	if err != nil {
+		return nil, err
+	}
+	topLearners := make([]dto.TopLearnerView, 0, len(topLearnerRows))
+	for _, row := range topLearnerRows {
+		topLearners = append(topLearners, dto.TopLearnerView{
+			Name:         row.Name,
+			Initials:     initialsOf(row.Name),
+			Email:        row.Email,
+			Program:      programLabel(row.Program),
+			AttemptCount: row.AttemptCount,
+			AverageScore: roundTo1(row.AverageScore),
+			BestScore:    row.BestScore,
+			BestTitle:    row.BestTitle,
+			LastActivity: formatTimePtr(row.LastActivity),
+			Note:         topLearnerNote(row.AttemptCount, row.AverageScore, row.BestScore, threshold),
+		})
+	}
+
 	// Peserta yang belum pernah latihan = total peserta − peserta dengan percobaan.
 	inactive := totalPeserta - participation.Learners
 	if inactive < 0 {
 		inactive = 0
 	}
-
 	return &dto.HRAnalyticsView{
 		TotalPeserta:      totalPeserta,
 		ActivePeserta:     participation.ActiveLearners,
@@ -173,6 +194,7 @@ func (s *HRService) Analytics(ctx context.Context) (*dto.HRAnalyticsView, error)
 		SkillProfile:      emptyIfNil(skillProfile),
 		MonthlyTrend:      emptyIfNil(monthly),
 		ProgramBreakdown:  emptyIfNil(programBreakdown),
+		TopLearners:       emptyIfNil(topLearners),
 		AtRiskLearners:    emptyIfNil(atRisk),
 		GeneratedAt:       formatTime(time.Now().UTC()),
 	}, nil
@@ -193,4 +215,18 @@ func atRiskReason(attemptCount int64, lastScore *int) string {
 		return "Belum pernah mengerjakan tryout"
 	}
 	return "Skor terakhir di bawah ambang"
+}
+
+// topLearnerNote menyusun catatan singkat untuk daftar peserta berprestasi:
+// apakah skor terbaiknya sudah melewati ambang, dan apakah capaian itu konsisten
+// (rata-rata beberapa percobaan juga di atas ambang).
+func topLearnerNote(attemptCount int64, averageScore float64, bestScore, threshold int) string {
+	switch {
+	case bestScore < threshold:
+		return "Skor terbaik belum mencapai ambang"
+	case attemptCount >= 3 && averageScore >= float64(threshold):
+		return "Konsisten di atas ambang"
+	default:
+		return "Skor terbaik di atas ambang"
+	}
 }

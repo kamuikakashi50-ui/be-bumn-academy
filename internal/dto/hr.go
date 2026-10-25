@@ -37,6 +37,7 @@ type HRAnalyticsView struct {
 	SkillProfile      []SkillScoreView    `json:"skillProfile"`
 	MonthlyTrend      []MonthlyPoint      `json:"monthlyTrend"`
 	ProgramBreakdown  []ProgramBreakdown  `json:"programBreakdown"`
+	TopLearners       []TopLearnerView    `json:"topLearners"`
 	AtRiskLearners    []AtRiskLearnerView `json:"atRiskLearners"`
 	GeneratedAt       string              `json:"generatedAt"`
 }
@@ -61,4 +62,21 @@ type AtRiskLearnerView struct {
 	LastScore    *int   `json:"lastScore,omitempty"`
 	LastActivity string `json:"lastActivity,omitempty"`
 	Reason       string `json:"reason"`
+}
+
+// TopLearnerView adalah peserta berprestasi: pemilik skor terbaik tertinggi,
+// diurutkan menurun. Kebalikan dari daftar pendampingan, daftar ini dipakai
+// untuk mengapresiasi sekaligus melihat praktik baik yang bisa dibagikan.
+type TopLearnerView struct {
+	Name         string  `json:"name"`
+	Initials     string  `json:"initials"`
+	Email        string  `json:"email"`
+	Program      string  `json:"program"`
+	AttemptCount int64   `json:"attemptCount"`
+	AverageScore float64 `json:"averageScore"`
+	BestScore    int     `json:"bestScore"`
+	// BestTitle adalah judul tryout tempat skor terbaik diperoleh.
+	BestTitle    string `json:"bestTitle"`
+	LastActivity string `json:"lastActivity,omitempty"`
+	Note         string `json:"note"`
 }

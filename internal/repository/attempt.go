@@ -507,6 +507,67 @@ func (r *AttemptRepository) AtRiskLearners(ctx context.Context, threshold, limit
 	return rows, nil
 }
 
+// TopLearnerRow adalah satu peserta berprestasi (skor terbaik tertinggi).
+type TopLearnerRow struct {
+	ID           string     `gorm:"column:id"`
+	Name         string     `gorm:"column:name"`
+	Email        string     `gorm:"column:email"`
+	Program      string     `gorm:"column:program"`
+	AttemptCount int64      `gorm:"column:attempt_count"`
+	AverageScore float64    `gorm:"column:average_score"`
+	BestScore    int        `gorm:"column:best_score"`
+	BestTitle    string     `gorm:"column:best_title"`
+	LastActivity *time.Time `gorm:"column:last_activity"`
+}
+
+// topLearnersQuery mengambil peserta berprestasi.
+//
+// `stats` menghitung jumlah percobaan, rata-rata skor, dan aktivitas terakhir
+// per peserta; `best` mengambil percobaan berskor tertinggi tiap peserta memakai
+// DISTINCT ON (waktu tercepat menjadi penentu bila skornya sama). Hanya peserta
+// yang pernah berlatih yang muncul, diurutkan dari skor terbaik.
+const topLearnersQuery = `
+WITH stats AS (
+    SELECT user_id, COUNT(*) AS attempt_count,
+           AVG(score) AS average_score, MAX(taken_at) AS last_activity
+      FROM attempts
+     GROUP BY user_id
+),
+best AS (
+    SELECT DISTINCT ON (a.user_id) a.user_id, a.score AS best_score, a.title AS best_title
+      FROM attempts a
+     ORDER BY a.user_id, a.score DESC, a.duration_seconds ASC, a.taken_at DESC
+)
+SELECT u.id, u.name, u.email, u.program,
+       s.attempt_count,
+       s.average_score,
+       b.best_score,
+       b.best_title,
+       s.last_activity
+  FROM users u
+  JOIN stats s ON s.user_id = u.id
+  JOIN best b ON b.user_id = u.id
+ WHERE u.role = ?
+ ORDER BY b.best_score DESC, s.average_score DESC, u.name ASC
+ LIMIT ?`
+
+// TopLearners mengambil peserta dengan skor terbaik tertinggi — pasangan dari
+// daftar pendampingan agar tim akademik bisa melihat dua ujung sebaran sekaligus.
+func (r *AttemptRepository) TopLearners(ctx context.Context, limit int) ([]TopLearnerRow, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+
+	var rows []TopLearnerRow
+	err := r.db.WithContext(ctx).
+		Raw(topLearnersQuery, string(models.RolePeserta), limit).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal memuat peserta berprestasi.")
+	}
+	return rows, nil
+}
+
 // MonthlyTrend mengagregasi percobaan per bulan (urut lama → baru).
 func (r *AttemptRepository) MonthlyTrend(ctx context.Context, months int) ([]MonthlyTrendRow, error) {
 	if months <= 0 {

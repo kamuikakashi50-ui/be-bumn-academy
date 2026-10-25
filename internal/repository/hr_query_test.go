@@ -74,6 +74,29 @@ func TestProgramBreakdownQueryMengelompokkanProgram(t *testing.T) {
 	}
 }
 
+func TestTopLearnersQueryMengambilSkorTerbaik(t *testing.T) {
+	for _, want := range []string{
+		"WITH stats AS",
+		"AVG(score) AS average_score",
+		"MAX(taken_at) AS last_activity",
+		"DISTINCT ON (a.user_id)",
+		"ORDER BY a.user_id, a.score DESC, a.duration_seconds ASC",
+		"JOIN stats s ON s.user_id = u.id",
+		"JOIN best b ON b.user_id = u.id",
+		"ORDER BY b.best_score DESC, s.average_score DESC",
+		"LIMIT ?",
+	} {
+		if !strings.Contains(topLearnersQuery, want) {
+			t.Errorf("query peserta berprestasi tidak memuat %q:\n%s", want, topLearnersQuery)
+		}
+	}
+
+	// Peserta tanpa percobaan tidak boleh muncul (JOIN, bukan LEFT JOIN).
+	if strings.Contains(topLearnersQuery, "LEFT JOIN best") {
+		t.Error("peserta berprestasi harus memakai JOIN sehingga hanya yang pernah latihan yang muncul")
+	}
+}
+
 func TestLearningStatsQueryMenghitungKelengkapan(t *testing.T) {
 	for _, want := range []string{
 		"FROM lessons WHERE active = true",
