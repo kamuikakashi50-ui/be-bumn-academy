@@ -33,6 +33,7 @@ type Options struct {
 	ClassroomService *service.ClassroomService
 	CorporateService *service.CorporateService
 	AdminService     *service.AdminService
+	HRService        *service.HRService
 	MentorService    *service.MentorService
 }
 
@@ -47,6 +48,7 @@ func New(opts Options) http.Handler {
 		Classroom: opts.ClassroomService,
 		Corporate: opts.CorporateService,
 		Admin:     opts.AdminService,
+		HR:        opts.HRService,
 		Mentor:    opts.MentorService,
 	}
 
@@ -58,6 +60,7 @@ func New(opts Options) http.Handler {
 	classroomHandler := handler.NewClassroomHandler(deps)
 	corporateHandler := handler.NewCorporateHandler(deps)
 	adminHandler := handler.NewAdminHandler(deps)
+	hrHandler := handler.NewHRHandler(deps)
 	aiHandler := handler.NewAIHandler(deps)
 	healthHandler := handler.NewHealthHandler(opts.DB, opts.Cache, opts.Version)
 	mediaHandler := handler.NewMediaHandler(opts.Config.App.MediaDir)
@@ -99,6 +102,7 @@ func New(opts Options) http.Handler {
 			corporate: corporateHandler,
 			media:     mediaHandler,
 			admin:     adminHandler,
+			hr:        hrHandler,
 			ai:        aiHandler,
 			authMid:   authMiddleware,
 		})
@@ -126,6 +130,7 @@ type routeHandlers struct {
 	corporate *handler.CorporateHandler
 	media     *handler.MediaHandler
 	admin     *handler.AdminHandler
+	hr        *handler.HRHandler
 	ai        *handler.AIHandler
 	authMid   *middleware.Auth
 }
@@ -238,6 +243,10 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 
 		r.Get("/analytics", h.admin.Analytics)
 		r.Get("/users", h.admin.ListUsers)
+
+		// Analitik SDM (people analytics): partisipasi, kelengkapan belajar,
+		// kesiapan kompetensi, dan peserta yang perlu pendampingan.
+		r.Get("/hr/analytics", h.hr.Analytics)
 
 		r.Get("/orders", h.admin.ListOrders)
 		r.Post("/orders/{id}/mark-paid", h.admin.MarkOrderPaid)

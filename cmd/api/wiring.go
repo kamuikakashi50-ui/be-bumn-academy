@@ -62,6 +62,7 @@ func buildRouter(
 		users, orders, enrollments, catalog, tryouts, attempts, learning,
 		catalogService, tryoutService, cfg,
 	)
+	hrService := service.NewHRService(users, attempts, classroomRepo, cfg)
 
 	// Mentor AI ("MinSmart") — provider dipilih dari konfigurasi, dengan
 	// mentor heuristik lokal sebagai jaring pengaman.
@@ -85,6 +86,7 @@ func buildRouter(
 		ClassroomService: classroomService,
 		CorporateService: corporateService,
 		AdminService:     adminService,
+		HRService:        hrService,
 		MentorService:    mentorService,
 	})
 }

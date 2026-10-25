@@ -317,6 +317,7 @@ hanya bila `MIDTRANS_SANDBOX_SIMULATOR=true` dan `MIDTRANS_IS_PRODUCTION=false`.
 | Metode | Path | Keterangan |
 | --- | --- | --- |
 | GET | `/admin/analytics` | ringkasan pengguna, pendapatan, distribusi skor |
+| GET | `/admin/hr/analytics` | analitik SDM: partisipasi, kelengkapan belajar, kesiapan, peserta perlu pendampingan |
 | GET | `/admin/users` | daftar pengguna + aktivitas |
 | GET | `/admin/orders` | semua pesanan (filter status/pencarian) |
 | POST | `/admin/orders/{id}/mark-paid` | tandai lunas manual + beri akses |

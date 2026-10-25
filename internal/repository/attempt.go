@@ -421,6 +421,92 @@ type MonthlyTrendRow struct {
 	AverageScore float64 `gorm:"column:average_score"`
 }
 
+// ParticipationRow adalah ringkasan partisipasi peserta pada latihan tryout.
+type ParticipationRow struct {
+	Learners        int64 `gorm:"column:learners"`
+	ActiveLearners  int64 `gorm:"column:active_learners"`
+	PracticeSeconds int64 `gorm:"column:practice_seconds"`
+}
+
+// ParticipationStats menghitung jumlah peserta yang pernah latihan, yang masih
+// aktif dalam `days` hari terakhir, dan total durasi pengerjaan (detik).
+//
+// Dipakai analitik HR untuk mengukur tingkat partisipasi kohort.
+func (r *AttemptRepository) ParticipationStats(ctx context.Context, days int) (*ParticipationRow, error) {
+	if days <= 0 {
+		days = 30
+	}
+	since := time.Now().UTC().AddDate(0, 0, -days)
+
+	var row ParticipationRow
+	err := r.db.WithContext(ctx).Model(&models.Attempt{}).
+		Select(`COUNT(DISTINCT user_id) AS learners,
+		        COUNT(DISTINCT user_id) FILTER (WHERE taken_at >= ?) AS active_learners,
+		        COALESCE(SUM(duration_seconds), 0) AS practice_seconds`, since).
+		Scan(&row).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal menghitung partisipasi peserta.")
+	}
+	return &row, nil
+}
+
+// AtRiskLearnerRow adalah satu peserta yang perlu pendampingan.
+type AtRiskLearnerRow struct {
+	ID           string     `gorm:"column:id"`
+	Name         string     `gorm:"column:name"`
+	Email        string     `gorm:"column:email"`
+	Program      string     `gorm:"column:program"`
+	AttemptCount int64      `gorm:"column:attempt_count"`
+	LastScore    *int       `gorm:"column:last_score"`
+	LastActivity *time.Time `gorm:"column:last_activity"`
+}
+
+// atRiskLearnersQuery mengambil peserta yang perlu pendampingan.
+//
+// `stats` menghitung jumlah percobaan & aktivitas terakhir per peserta;
+// `latest` mengambil skor percobaan terbaru memakai DISTINCT ON. Peserta tanpa
+// percobaan didahulukan, lalu skor terendah.
+const atRiskLearnersQuery = `
+WITH stats AS (
+    SELECT user_id, COUNT(*) AS attempt_count, MAX(taken_at) AS last_activity
+      FROM attempts
+     GROUP BY user_id
+),
+latest AS (
+    SELECT DISTINCT ON (a.user_id) a.user_id, a.score
+      FROM attempts a
+     ORDER BY a.user_id, a.taken_at DESC, a.score DESC
+)
+SELECT u.id, u.name, u.email, u.program,
+       COALESCE(s.attempt_count, 0) AS attempt_count,
+       l.score AS last_score,
+       s.last_activity AS last_activity
+  FROM users u
+  LEFT JOIN stats s ON s.user_id = u.id
+  LEFT JOIN latest l ON l.user_id = u.id
+ WHERE u.role = ?
+   AND (s.attempt_count IS NULL OR l.score < ?)
+ ORDER BY (s.attempt_count IS NULL) DESC, l.score ASC NULLS FIRST, u.name ASC
+ LIMIT ?`
+
+// AtRiskLearners mengambil peserta yang belum pernah mengerjakan tryout atau
+// skor terakhirnya masih di bawah ambang. Peserta tanpa percobaan didahulukan,
+// lalu skor terendah, agar tim akademik bisa memprioritaskan pendampingan.
+func (r *AttemptRepository) AtRiskLearners(ctx context.Context, threshold, limit int) ([]AtRiskLearnerRow, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var rows []AtRiskLearnerRow
+	err := r.db.WithContext(ctx).
+		Raw(atRiskLearnersQuery, string(models.RolePeserta), threshold, limit).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal memuat peserta yang perlu pendampingan.")
+	}
+	return rows, nil
+}
+
 // MonthlyTrend mengagregasi percobaan per bulan (urut lama → baru).
 func (r *AttemptRepository) MonthlyTrend(ctx context.Context, months int) ([]MonthlyTrendRow, error) {
 	if months <= 0 {

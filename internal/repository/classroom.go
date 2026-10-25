@@ -217,3 +217,38 @@ func (r *ClassroomRepository) LessonsByIDs(ctx context.Context, ids []string) ([
 	}
 	return out, nil
 }
+
+/* --------------------- ringkasan agregat (analitik HR) -------------------- */
+
+// LearningStatsRow adalah ringkasan kelengkapan belajar ruang kelas digital.
+type LearningStatsRow struct {
+	TotalLessons     int64   `gorm:"column:total_lessons"`
+	CompletedLessons int64   `gorm:"column:completed_lessons"`
+	ActiveLearners   int64   `gorm:"column:active_learners"`
+	AverageProgress  float64 `gorm:"column:average_progress"`
+}
+
+// learningStatsQuery mengagregasi kelengkapan belajar ruang kelas digital.
+//
+// Sub-query dipakai agar satu perjalanan ke database cukup untuk menghitung
+// jumlah pelajaran aktif, pelajaran selesai, peserta yang pernah membuka
+// materi, dan rata-rata progres menonton/membaca.
+const learningStatsQuery = `
+SELECT
+    (SELECT COUNT(*) FROM lessons WHERE active = true) AS total_lessons,
+    (SELECT COUNT(*) FROM lesson_progress WHERE completed = true) AS completed_lessons,
+    (SELECT COUNT(DISTINCT user_id) FROM lesson_progress) AS active_learners,
+    (SELECT COALESCE(AVG(progress_percent), 0) FROM lesson_progress) AS average_progress`
+
+// LearningStats mengagregasi kelengkapan belajar: jumlah pelajaran aktif,
+// pelajaran yang selesai, peserta yang pernah membuka materi, dan rata-rata
+// progres menonton/membaca.
+//
+// Dipakai analitik HR untuk mengukur adopsi ruang kelas digital oleh peserta.
+func (r *ClassroomRepository) LearningStats(ctx context.Context) (*LearningStatsRow, error) {
+	var row LearningStatsRow
+	if err := r.db.WithContext(ctx).Raw(learningStatsQuery).Scan(&row).Error; err != nil {
+		return nil, apperror.Internal(err, "Gagal menghitung kelengkapan belajar.")
+	}
+	return &row, nil
+}

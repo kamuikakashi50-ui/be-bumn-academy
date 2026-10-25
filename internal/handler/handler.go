@@ -32,6 +32,7 @@ type Deps struct {
 	Classroom *service.ClassroomService
 	Corporate *service.CorporateService
 	Admin     *service.AdminService
+	HR        *service.HRService
 	Mentor    *service.MentorService
 }
 

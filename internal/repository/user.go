@@ -138,6 +138,37 @@ func (r *UserRepository) CountAll(ctx context.Context) (int64, error) {
 	return r.CountByRole(ctx, "")
 }
 
+// ProgramBreakdownRow adalah partisipasi & capaian peserta pada satu program.
+type ProgramBreakdownRow struct {
+	Program      string  `gorm:"column:program"`
+	Peserta      int64   `gorm:"column:peserta"`
+	Attempts     int64   `gorm:"column:attempts"`
+	AverageScore float64 `gorm:"column:average_score"`
+}
+
+// ProgramBreakdown mengagregasi jumlah peserta, percobaan tryout, dan rata-rata
+// skor per program/segmen peserta (kolom `users.program`).
+//
+// Dipakai analitik HR untuk melihat sebaran kohort antar program tanpa membuka
+// identitas peserta satu per satu.
+func (r *UserRepository) ProgramBreakdown(ctx context.Context) ([]ProgramBreakdownRow, error) {
+	var rows []ProgramBreakdownRow
+	err := r.db.WithContext(ctx).Model(&models.User{}).
+		Select(`COALESCE(NULLIF(users.program, ''), 'Belum diisi') AS program,
+		        COUNT(DISTINCT users.id) AS peserta,
+		        COUNT(attempts.id) AS attempts,
+		        COALESCE(AVG(attempts.score), 0) AS average_score`).
+		Joins("LEFT JOIN attempts ON attempts.user_id = users.id").
+		Where("users.role = ?", models.RolePeserta).
+		Group("program").
+		Order("peserta DESC, program ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal menghitung sebaran peserta per program.")
+	}
+	return rows, nil
+}
+
 /* ---------------------------- refresh token ----------------------------- */
 
 // CreateRefreshToken menyimpan refresh token baru.
