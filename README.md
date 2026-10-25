@@ -144,6 +144,14 @@ dibuat oleh `scripts/generate-media.sh` (Pillow merender slide, ffmpeg mengemas
 MP4 H.264 1280×720 + poster) sehingga peserta benar-benar memutar video asli.
 Direktori media dilayani pada `/api/v1/media/*` (lihat `MEDIA_DIR`).
 
+Selain katalog, `internal/seed/hr.go` menyiapkan **kohort demo analitik HR** agar
+dasbor `/admin/hr` langsung penuh data: 10 peserta lintas segmen program
+(`users.program`), 36 percobaan tryout tersebar dalam enam bulan beserta rincian
+skor per subtes, dan 51 baris progres ruang kelas. Seluruh akun kohort memakai
+kata sandi `peserta123` (mis. `dewi.lestari@bumnacademy.id`). Akun inti
+`peserta@bumnacademy.id` **sengaja tidak** diberi percobaan/progres agar skrip
+verifikasi (`smoke-test.sh`, `verify-integration.sh`) tetap berlaku.
+
 ### Isi paket `internal/seed`
 
 | Berkas | Isi |
@@ -151,9 +159,11 @@ Direktori media dilayani pada `/api/v1/media/*` (lihat `MEDIA_DIR`).
 | `seed.go` | orkestrasi `seed.Run(ctx, db, cfg)` + upsert seluruh katalog memakai UUID deterministik (`uuid.NewSHA1`) agar seed berulang tidak membuat baris baru |
 | `data.go` | struktur JSON + `//go:embed data.json classroom.json` |
 | `learning.go` | jadwal kelas live (disimpan sebagai selisih jam dari waktu seed) & 6 rekaman kelas |
+| `hr.go` | kohort demo analitik HR: akun peserta lintas segmen, riwayat percobaan tryout (dengan rincian subtes), akses produk, dan progres ruang kelas |
 | `data.json` | program, kategori materi, produk, metode bayar, voucher, 45 soal, 5 paket tryout, akun demo, enrollment demo |
 | `classroom.json` | 8 modul & 15 materi (6 video dari `media/lessons/` + 9 e-book yang dirender jadi PDF saat dibuka) |
 | `seed_test.go` | uji kontrak data: jumlah data, id unik, bank soal tiap subtes, produk wajib tiap paket, keberadaan berkas media, determinisme `stableID` |
+| `hr_test.go` | uji kontrak kohort analitik HR: sebaran program, akun kohort tidak menimpa akun inti, rentang enam bulan, peserta tanpa percobaan, validitas rotasi tryout & pola progres |
 
 Seed dipanggil otomatis saat start (`SEED_ON_START=true`) maupun manual lewat
 `make seed` / `go run ./cmd/seed`. Seluruh operasi idempoten (upsert), sehingga
@@ -165,6 +175,29 @@ aman dijalankan berulang — termasuk saat beberapa replika API start bersamaan.
 | --- | --- | --- |
 | Peserta | `peserta@bumnacademy.id` | `peserta123` |
 | Admin | `admin@bumnacademy.id` | `admin123` |
+
+### Kohort demo analitik HR
+
+`internal/seed/hr.go` menambahkan 10 akun peserta (kata sandi `peserta123`) untuk
+mengisi dasbor `/admin/hr` dengan data nyata:
+
+| Segmen (`users.program`) | Akun |
+| --- | --- |
+| Kelas Intensif BUMN | `dewi.lestari@`, `rangga.pratama@`, `rian.kusuma@` |
+| Program Reguler | `siti.nurhaliza@`, `bayu.saputra@`, `hana.maulida@` |
+| Kelas Korporasi | `intan.permata@`, `fajar.ramadhan@` |
+| Alumni & Retaker | `nadia.safira@`, `yoga.pratama@` |
+
+(semua beralamat `@bumnacademy.id`). Tiap akun mendapat akses seluruh produk demo,
+lalu sebagian diberi 3–6 percobaan tryout yang tersebar 4–170 hari ke belakang
+beserta rincian skor per subtes, dan 3–8 baris progres ruang kelas. `hana.maulida@`
+dan `rian.kusuma@` sengaja dibiarkan tanpa percobaan agar metrik "belum pernah
+latihan" serta daftar peserta perlu pendampingan terisi.
+
+Semua penulisan memakai UUID deterministik + upsert (termasuk penulisan ulang
+rincian subtes per percobaan), sehingga `make seed` berulang tidak menambah baris
+baru. Akun inti di atas tidak pernah diberi percobaan/progres supaya skrip
+verifikasi tetap sahih.
 
 ---
 

@@ -33,6 +33,17 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
+
+	// Kohort demo analitik HR: peserta tambahan lintas segmen program. Dibuat
+	// lewat jalur yang sama dengan akun inti agar kata sandinya ikut di-hash.
+	cohortIDs, err := seedUsers(ctx, db, hrCohortUsers)
+	if err != nil {
+		return err
+	}
+	for email, id := range cohortIDs {
+		userIDs[email] = id
+	}
+
 	if err := seedPrograms(ctx, db, data.Programs); err != nil {
 		return err
 	}
@@ -66,6 +77,11 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err := seedEnrollments(ctx, db, data.Enrollments, userIDs); err != nil {
 		return err
 	}
+	// Riwayat latihan & progres materi kohort agar dasbor Analitik HR
+	// (/admin/hr) benar-benar terisi data.
+	if err := seedHRActivity(ctx, db, data, classroom, userIDs, cfg.Business.PassingThreshold); err != nil {
+		return err
+	}
 
 	slog.Info("seed: data demo siap",
 		"env", cfg.App.Env,
@@ -75,6 +91,8 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 		"soal", len(data.Questions),
 		"tryout", len(data.Tryouts),
 		"modul", len(classroom.Modules),
+		"kohort_hr", len(hrCohortUsers),
+		"percobaan_hr", len(hrAttemptDefs),
 	)
 	return nil
 }
