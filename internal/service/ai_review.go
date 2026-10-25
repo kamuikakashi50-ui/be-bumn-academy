@@ -846,11 +846,7 @@ func (s *MentorService) persistStreamedMessage(
 }
 
 func (s *MentorService) streamErrorMessage(err error) string {
-	appErr := s.providerError(err)
-	if typed, ok := appErr.(*apperror.Error); ok {
-		return typed.Message
-	}
-	return "Mentor AI gagal menjawab. Coba lagi sebentar."
+	return streamErrorMessage(s.providerError(err), "Mentor AI")
 }
 
 /* ---------------------------------- kuota --------------------------------- */
@@ -985,28 +981,11 @@ func newMessage(
 
 // providerError mengubah kegagalan penyedia menjadi error aplikasi yang jelas.
 func (s *MentorService) providerError(err error) error {
-	var upstream *ai.UpstreamError
-	if !errors.As(err, &upstream) {
-		return apperror.Internal(err, "Mentor AI sedang tidak bisa dihubungi. Coba lagi sebentar.")
-	}
-
-	if upstream.IsConfiguration() {
-		s.logger.Error("konfigurasi mentor AI bermasalah",
-			"provider", upstream.Provider, "code", upstream.Code, "status", upstream.StatusCode)
-		return apperror.New(apperror.CodeInternal, 503,
-			"Mentor AI belum siap dipakai (konfigurasi model). Hubungi tim akademik.")
-	}
-	if upstream.IsRetryable() {
-		return apperror.New(apperror.CodeInternal, 503, "Mentor AI sedang sibuk. Coba lagi beberapa saat.")
-	}
-	return apperror.Internal(err, "Mentor AI gagal menjawab. Coba lagi sebentar.")
+	return providerError(s.logger, "Mentor AI", err)
 }
 
 func (s *MentorService) isDegraded() bool {
-	if fallback, ok := s.provider.(*ai.FallbackProvider); ok {
-		return fallback.Degraded()
-	}
-	return false
+	return isDegradedProvider(s.provider)
 }
 
 /* ------------------------------ pemetaan tipe ------------------------------ */

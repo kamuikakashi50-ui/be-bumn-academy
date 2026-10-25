@@ -59,10 +59,12 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err := seedVouchers(ctx, db, data.Vouchers); err != nil {
 		return err
 	}
-	if err := seedQuestions(ctx, db, data.Questions); err != nil {
+	// Paket tryout dibuat lebih dulu: soal menautkan dirinya ke paket lewat
+	// `tryout_id` (foreign key), jadi paketnya harus sudah ada.
+	if err := seedTryouts(ctx, db, data.Tryouts); err != nil {
 		return err
 	}
-	if err := seedTryouts(ctx, db, data.Tryouts); err != nil {
+	if err := seedQuestions(ctx, db, data.Questions, data.Tryouts); err != nil {
 		return err
 	}
 	if err := seedClassroom(ctx, db, classroom); err != nil {
@@ -192,37 +194,107 @@ func stringPtr(value string) *string {
 //
 // Memakai ON CONFLICT DO UPDATE dalam batch sehingga puluhan soal tertulis dalam
 // beberapa statement saja.
-func seedQuestions(ctx context.Context, db *gorm.DB, defs []QuestionDef) error {
+// seedQuestions menyisipkan/memperbarui bank soal.
+//
+// Sejak soal dimiliki per paket tryout (kolom `tryout_id`), satu definisi soal
+// yang bank-nya dipakai beberapa tryout disalin ke tiap tryout tersebut: baris
+// pertama memakai id asli dari data.json, salinannya memakai UUID deterministik
+// sehingga seed berulang tidak menambah baris baru.
+//
+// Seed menguasai seluruh soal pada paket tryout demo: baris di luar himpunan
+// kanonik (mis. hasil penggandaan migrasi 000011, atau soal yang dibuat admin
+// pada tryout demo) dihapus agar hasilnya tetap sama setiap kali dijalankan.
+func seedQuestions(ctx context.Context, db *gorm.DB, defs []QuestionDef, tryouts []TryoutDef) error {
 	if len(defs) == 0 {
 		return nil
 	}
 
-	questions := make([]models.Question, 0, len(defs))
-	for _, def := range defs {
-		questions = append(questions, models.Question{
-			ID:          def.ID,
-			BankKey:     def.BankKey,
-			Text:        def.Text,
-			Options:     models.StringList(def.Options),
-			AnswerIndex: def.AnswerIndex,
-			Explanation: def.Explanation,
-			Difficulty:  models.Difficulty(def.Difficulty),
-			Position:    def.Position,
-			Active:      true,
-		})
+	// Peta bank → tryout yang memakainya (lewat `subtests.banks`).
+	bankOwners := make(map[string]map[string]bool, len(defs))
+	for _, tryout := range tryouts {
+		for _, subtest := range tryout.Subtests {
+			for _, bankKey := range subtest.Banks {
+				if bankOwners[bankKey] == nil {
+					bankOwners[bankKey] = map[string]bool{}
+				}
+				bankOwners[bankKey][tryout.ID] = true
+			}
+		}
 	}
 
-	err := db.WithContext(ctx).Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{
-			"bank_key", "text", "options", "answer_index", "explanation",
-			"difficulty", "position", "active", "updated_at",
-		}),
-	}).CreateInBatches(questions, 50).Error
+	questions := make([]models.Question, 0, len(defs))
+	canonical := make([]string, 0, len(defs))
+	for _, def := range defs {
+		owners := make([]string, 0, 4)
+		for _, tryout := range tryouts {
+			if bankOwners[def.BankKey][tryout.ID] {
+				owners = append(owners, tryout.ID)
+			}
+		}
+
+		if len(owners) == 0 {
+			// Bank yang tidak dipakai tryout mana pun tetap disimpan sebagai soal
+			// "belum ditautkan" agar tidak hilang dari panel bank soal.
+			questions = append(questions, newSeedQuestion(def, def.ID, nil))
+			canonical = append(canonical, def.ID)
+			continue
+		}
+
+		for index, tryoutID := range owners {
+			id := def.ID
+			if index > 0 {
+				id = stableID("question/" + tryoutID + "/" + def.ID)
+			}
+			owner := tryoutID
+			questions = append(questions, newSeedQuestion(def, id, &owner))
+			canonical = append(canonical, id)
+		}
+	}
+
+	tryoutIDs := make([]string, 0, len(tryouts))
+	for _, tryout := range tryouts {
+		tryoutIDs = append(tryoutIDs, tryout.ID)
+	}
+
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"bank_key", "tryout_id", "text", "options", "answer_index",
+				"explanation", "difficulty", "position", "active", "updated_at",
+			}),
+		}).CreateInBatches(questions, 50).Error; err != nil {
+			return err
+		}
+
+		// Buang soal demo yang tidak lagi bagian dari himpunan kanonik.
+		if len(tryoutIDs) == 0 {
+			return nil
+		}
+		return tx.Where("tryout_id IN ?", tryoutIDs).
+			Where("id NOT IN ?", canonical).
+			Delete(&models.Question{}).Error
+	})
 	if err != nil {
 		return fmt.Errorf("seed: gagal menyimpan bank soal: %w", err)
 	}
 	return nil
+}
+
+// newSeedQuestion membentuk model soal dari definisi data.json.
+func newSeedQuestion(def QuestionDef, id string, tryoutID *string) models.Question {
+	return models.Question{
+		ID:          id,
+		BankKey:     def.BankKey,
+		TryoutID:    tryoutID,
+		Text:        def.Text,
+		Options:     models.StringList(def.Options),
+		AnswerIndex: def.AnswerIndex,
+		Explanation: def.Explanation,
+		Difficulty:  models.Difficulty(def.Difficulty),
+		Position:    def.Position,
+		Active:      true,
+	}
 }
 
 // seedTryouts menyisipkan/memperbarui paket tryout beserta subtesnya.

@@ -190,7 +190,7 @@ func toAttemptView(attempt models.Attempt) dto.AttemptView {
 }
 
 func toQuestionView(question models.Question) dto.QuestionView {
-	return dto.QuestionView{
+	view := dto.QuestionView{
 		ID:          question.ID,
 		BankKey:     question.BankKey,
 		BankLabel:   bank.Label(question.BankKey),
@@ -201,6 +201,10 @@ func toQuestionView(question models.Question) dto.QuestionView {
 		Difficulty:  string(question.Difficulty),
 		Active:      question.Active,
 	}
+	if question.TryoutID != nil {
+		view.TryoutID = *question.TryoutID
+	}
+	return view
 }
 
 /* ------------------------------- learning -------------------------------- */

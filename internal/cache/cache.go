@@ -136,8 +136,13 @@ func KeyTryoutList() string { return "tryout:list" }
 // KeyTryoutDetail adalah kunci detail paket tryout.
 func KeyTryoutDetail(id string) string { return "tryout:detail:" + id }
 
-// KeyQuestionBank adalah kunci bank soal per kategori.
-func KeyQuestionBank(bankKey string) string { return "bank:" + bankKey }
+// KeyQuestionBank adalah kunci bank soal satu tryout per kategori.
+//
+// Soal dimiliki per paket tryout, sehingga kuncinya memuat tryoutID — dua tryout
+// dengan kategori sama tidak boleh berbagi cache.
+func KeyQuestionBank(tryoutID, bankKey string) string {
+	return "bank:" + tryoutID + ":" + bankKey
+}
 
 // KeyLeaderboard adalah kunci cache leaderboard per tryout.
 func KeyLeaderboard(tryoutID string) string { return "leaderboard:" + tryoutID }

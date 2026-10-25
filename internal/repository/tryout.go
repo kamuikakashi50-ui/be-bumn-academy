@@ -126,6 +126,7 @@ func (r *TryoutRepository) CountPackages(ctx context.Context) (int64, error) {
 // QuestionFilter adalah filter daftar soal.
 type QuestionFilter struct {
 	BankKey    string
+	TryoutID   string
 	Search     string
 	Difficulty string
 	ActiveOnly bool
@@ -136,6 +137,9 @@ func (r *TryoutRepository) ListQuestions(ctx context.Context, filter QuestionFil
 	query := r.db.WithContext(ctx).Model(&models.Question{})
 	if filter.BankKey != "" {
 		query = query.Where("bank_key = ?", filter.BankKey)
+	}
+	if filter.TryoutID != "" {
+		query = query.Where("tryout_id = ?", filter.TryoutID)
 	}
 	if filter.Difficulty != "" {
 		query = query.Where("difficulty = ?", filter.Difficulty)
@@ -176,18 +180,20 @@ func (r *TryoutRepository) FindQuestion(ctx context.Context, id string) (*models
 	return &question, nil
 }
 
-// QuestionsByBanks mengambil seluruh soal aktif dari sekumpulan bank, terurut
-// per bank lalu per posisi.
+// QuestionsByBanks mengambil seluruh soal aktif sebuah tryout dari sekumpulan
+// bank, terurut mengikuti urutan bank pada subtes.
 //
-// Hasilnya di-cache di Redis oleh service karena bank soal jarang berubah
-// sementara endpoint ini dipanggil setiap kali peserta memulai sesi.
-func (r *TryoutRepository) QuestionsByBanks(ctx context.Context, banks []string) ([]models.Question, error) {
-	if len(banks) == 0 {
+// `tryoutID` wajib: satu soal dimiliki satu tryout, sehingga soal milik tryout
+// lain tidak boleh ikut terambil walau kategorinya sama. Hasilnya di-cache di
+// Redis oleh service karena bank soal jarang berubah sementara fungsi ini
+// dipanggil setiap kali peserta memulai sesi.
+func (r *TryoutRepository) QuestionsByBanks(ctx context.Context, tryoutID string, banks []string) ([]models.Question, error) {
+	if tryoutID == "" || len(banks) == 0 {
 		return nil, nil
 	}
 	var out []models.Question
 	err := r.db.WithContext(ctx).
-		Where("bank_key IN ? AND active = ?", banks, true).
+		Where("tryout_id = ? AND bank_key IN ? AND active = ?", tryoutID, banks, true).
 		Order("bank_key ASC, position ASC, id ASC").
 		Find(&out).Error
 	if err != nil {
@@ -196,25 +202,33 @@ func (r *TryoutRepository) QuestionsByBanks(ctx context.Context, banks []string)
 	return out, nil
 }
 
-// CountQuestionsByBank menghitung jumlah soal aktif per bank.
-func (r *TryoutRepository) CountQuestionsByBank(ctx context.Context) (map[string]int, error) {
+// CountQuestionsByTryout menghitung jumlah soal aktif per (tryout, bank).
+//
+// Dipakai daftar & detail tryout untuk menampilkan jumlah soal tiap subtes
+// tanpa query per paket. Soal yang belum ditautkan ke tryout (tryout_id NULL)
+// tidak ikut dihitung karena tidak dipakai sesi mana pun.
+func (r *TryoutRepository) CountQuestionsByTryout(ctx context.Context) (map[string]map[string]int, error) {
 	type row struct {
-		BankKey string
-		Total   int
+		TryoutID string
+		BankKey  string
+		Total    int
 	}
 	var rows []row
 	err := r.db.WithContext(ctx).Model(&models.Question{}).
-		Select("bank_key, count(*) AS total").
-		Where("active = ?", true).
-		Group("bank_key").
+		Select("tryout_id, bank_key, count(*) AS total").
+		Where("active = ? AND tryout_id IS NOT NULL", true).
+		Group("tryout_id, bank_key").
 		Scan(&rows).Error
 	if err != nil {
 		return nil, apperror.Internal(err, "Gagal menghitung soal per kategori.")
 	}
 
-	out := make(map[string]int, len(rows))
+	out := make(map[string]map[string]int, len(rows))
 	for _, item := range rows {
-		out[item.BankKey] = item.Total
+		if out[item.TryoutID] == nil {
+			out[item.TryoutID] = make(map[string]int)
+		}
+		out[item.TryoutID][item.BankKey] = item.Total
 	}
 	return out, nil
 }
@@ -279,13 +293,17 @@ func (r *TryoutRepository) CountQuestions(ctx context.Context) (int64, error) {
 	return total, nil
 }
 
-// NextQuestionPosition menghitung posisi berikutnya pada sebuah bank.
-func (r *TryoutRepository) NextQuestionPosition(ctx context.Context, bankKey string) (int, error) {
+// NextQuestionPosition menghitung posisi berikutnya pada sebuah bank di dalam
+// satu tryout (posisi bersifat lokal per tryout).
+func (r *TryoutRepository) NextQuestionPosition(ctx context.Context, tryoutID, bankKey string) (int, error) {
+	query := r.db.WithContext(ctx).Model(&models.Question{}).
+		Where("bank_key = ?", bankKey)
+	if tryoutID != "" {
+		query = query.Where("tryout_id = ?", tryoutID)
+	}
+
 	var maxPos *int
-	err := r.db.WithContext(ctx).Model(&models.Question{}).
-		Where("bank_key = ?", bankKey).
-		Select("MAX(position)").
-		Scan(&maxPos).Error
+	err := query.Select("MAX(position)").Scan(&maxPos).Error
 	if err != nil {
 		return 0, apperror.Internal(err, "Gagal menghitung urutan soal.")
 	}

@@ -34,6 +34,7 @@ type Options struct {
 	CorporateService *service.CorporateService
 	AdminService     *service.AdminService
 	HRService        *service.HRService
+	HRChatService    *service.HRChatService
 	MentorService    *service.MentorService
 }
 
@@ -49,6 +50,7 @@ func New(opts Options) http.Handler {
 		Corporate: opts.CorporateService,
 		Admin:     opts.AdminService,
 		HR:        opts.HRService,
+		HRChat:    opts.HRChatService,
 		Mentor:    opts.MentorService,
 	}
 
@@ -247,6 +249,12 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		// Analitik SDM (people analytics): partisipasi, kelengkapan belajar,
 		// kesiapan kompetensi, dan peserta yang perlu pendampingan.
 		r.Get("/hr/analytics", h.hr.Analytics)
+
+		// Asisten HR: percakapan AI yang menjawab pertanyaan tim HR dari data
+		// analitik di atas. Berada di grup admin karena memuat nama peserta.
+		r.Post("/hr/ai/chat", h.hr.Chat)
+		r.Post("/hr/ai/chat/stream", h.hr.ChatStream)
+		r.Get("/hr/ai/usage", h.hr.Usage)
 
 		r.Get("/orders", h.admin.ListOrders)
 		r.Post("/orders/{id}/mark-paid", h.admin.MarkOrderPaid)

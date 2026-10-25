@@ -70,6 +70,9 @@ func buildRouter(
 	mentorService := service.NewMentorService(
 		attempts, sessions, aiRepo, tryoutService, provider, cacheLayer, cfg, logger,
 	)
+	// Asisten HR memakai provider yang sama, tetapi konteksnya data analitik
+	// kohort sehingga jawabannya berbicara soal peserta secara agregat.
+	hrChatService := service.NewHRChatService(hrService, aiRepo, provider, cfg, logger)
 
 	return router.New(router.Options{
 		Config:           cfg,
@@ -87,6 +90,7 @@ func buildRouter(
 		CorporateService: corporateService,
 		AdminService:     adminService,
 		HRService:        hrService,
+		HRChatService:    hrChatService,
 		MentorService:    mentorService,
 	})
 }

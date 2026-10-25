@@ -71,8 +71,12 @@ func TestItoa(t *testing.T) {
 }
 
 func TestKeyBuilders(t *testing.T) {
-	if got := KeyQuestionBank("numerik"); got != "bank:numerik" {
+	if got := KeyQuestionBank("to-demo-nasional", "numerik"); got != "bank:to-demo-nasional:numerik" {
 		t.Errorf("KeyQuestionBank = %q", got)
+	}
+	// Dua tryout dengan kategori sama tidak boleh berbagi kunci cache.
+	if KeyQuestionBank("to-tkd-01", "numerik") == KeyQuestionBank("to-tkd-02", "numerik") {
+		t.Error("KeyQuestionBank harus memuat tryoutID")
 	}
 	if got := KeyLeaderboard("to-tkd-01"); got != "leaderboard:to-tkd-01" {
 		t.Errorf("KeyLeaderboard = %q", got)

@@ -133,6 +133,7 @@ bisa dijalankan dengan `migrate` CLI bila tim memakai tooling tersebut.
 | 008 | attempt_analyses, ai_conversations, ai_messages, ai_usage_counters |
 | 009 | kolom Midtrans pada orders (payment_provider/status/snap_token/redirect) |
 | 010 | course_modules, lessons, lesson_progress (ruang kelas digital) |
+| 011 | `questions.tryout_id` — bank soal dikelompokkan per paket tryout (backfill menggandakan soal yang dipakai beberapa tryout) |
 
 Data demo di-embed dari `internal/seed/data.json` yang dihasilkan dari modul mock
 front-end (45 soal, 5 paket tryout, 4 produk, 4 program, 3 voucher, 6 rekaman),
@@ -160,7 +161,7 @@ verifikasi (`smoke-test.sh`, `verify-integration.sh`) tetap berlaku.
 | `data.go` | struktur JSON + `//go:embed data.json classroom.json` |
 | `learning.go` | jadwal kelas live (disimpan sebagai selisih jam dari waktu seed) & 6 rekaman kelas |
 | `hr.go` | kohort demo analitik HR: akun peserta lintas segmen, riwayat percobaan tryout (dengan rincian subtes), akses produk, dan progres ruang kelas |
-| `data.json` | program, kategori materi, produk, metode bayar, voucher, 45 soal, 5 paket tryout, akun demo, enrollment demo |
+| `data.json` | program, kategori materi, produk, metode bayar, voucher, 45 definisi soal (digandakan per tryout saat disisipkan), 5 paket tryout, akun demo, enrollment demo |
 | `classroom.json` | 8 modul & 15 materi (6 video dari `media/lessons/` + 9 e-book yang dirender jadi PDF saat dibuka) |
 | `seed_test.go` | uji kontrak data: jumlah data, id unik, bank soal tiap subtes, produk wajib tiap paket, keberadaan berkas media, determinisme `stableID` |
 | `hr_test.go` | uji kontrak kohort analitik HR: sebaran program, akun kohort tidak menimpa akun inti, rentang enam bulan, peserta tanpa percobaan, validitas rotasi tryout & pola progres |
@@ -168,6 +169,31 @@ verifikasi (`smoke-test.sh`, `verify-integration.sh`) tetap berlaku.
 Seed dipanggil otomatis saat start (`SEED_ON_START=true`) maupun manual lewat
 `make seed` / `go run ./cmd/seed`. Seluruh operasi idempoten (upsert), sehingga
 aman dijalankan berulang — termasuk saat beberapa replika API start bersamaan.
+
+### Bank soal per paket tryout (migrasi 011)
+
+Sejak migrasi `000011_question_tryout`, satu soal **dimiliki satu paket tryout**:
+
+- `questions.tryout_id` → FK ke `tryout_packages` (`ON DELETE CASCADE`): menghapus
+  paket tryout ikut menghapus soalnya.
+- `questions.bank_key` tetap menentukan **subtes** mana yang mengambil soal (lewat
+  `subtests.banks`), sehingga penyusunan sesi mencari
+  `tryout_id = <paket> AND bank_key IN (banks subtes)`.
+- Soal yang bank-nya dipakai beberapa tryout **digandakan** ke tiap tryout.
+  Migrasi 011 melakukannya untuk data lama (baris asli dipertahankan, tryout lain
+  mendapat salinan ber-id baru) dan seed melakukannya untuk data demo — karena itu
+  45 definisi soal di `data.json` menjadi **103 baris** di database, sementara
+  jumlah soal tiap tryout tetap sama seperti sebelum perubahan (22/26/30/11/14).
+- `tryout_id` boleh `NULL` untuk soal warisan yang bank-nya tidak dipakai tryout
+  mana pun; soal itu tampil di panel admin sebagai “belum ditautkan” dan tidak
+  dipakai sesi mana pun.
+- Seed menguasai seluruh soal pada paket tryout demo: baris di luar himpunan
+  kanonik (mis. hasil penggandaan migrasi, atau soal yang dibuat admin pada tryout
+  demo) dibersihkan agar hasilnya sama setiap kali dijalankan.
+
+Konsekuensi praktis: mengubah teks soal berarti mengubahnya **per tryout**
+(salinan tidak ikut berubah otomatis), dan `GET /admin/questions` menerima filter
+`?tryoutId=` untuk menampilkan soal satu paket.
 
 ### Akun demo
 
@@ -345,6 +371,18 @@ hanya bila `MIDTRANS_SANDBOX_SIMULATOR=true` dan `MIDTRANS_IS_PRODUCTION=false`.
 | GET | `/ai/usage` | peserta | kuota mentor AI hari ini |
 | GET | `/ai/status` | publik | kesiapan provider (`provider`, `model`, `degraded`) |
 
+### Asisten HR (AI)
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| POST | `/admin/hr/ai/chat` | admin | tanya jawab analitik HR (`message` + `history` opsional) |
+| POST | `/admin/hr/ai/chat/stream` | admin | balasan bertahap (Server-Sent Events) |
+| GET | `/admin/hr/ai/usage` | admin | kuota asisten AI hari ini |
+
+Percakapan asisten HR **tidak disimpan** di server: konteksnya data kohort
+agregat, bukan satu hasil tryout, sehingga riwayat dikirim ulang klien pada
+setiap pertanyaan (dibatasi 12 pesan dan disanitasi ulang di server).
+
 ### Admin
 
 | Metode | Path | Keterangan |
@@ -356,7 +394,7 @@ hanya bila `MIDTRANS_SANDBOX_SIMULATOR=true` dan `MIDTRANS_IS_PRODUCTION=false`.
 | POST | `/admin/orders/{id}/mark-paid` | tandai lunas manual + beri akses |
 | GET/POST | `/admin/questions` | daftar/tambah soal |
 | PATCH/DELETE | `/admin/questions/{id}` | ubah/hapus soal |
-| POST | `/admin/questions/import` | import soal dari Excel/CSV (multipart `file`) |
+| POST | `/admin/questions/import` | import soal dari Excel/CSV (multipart `file`, opsional `tryoutId` tujuan) |
 | POST/PATCH/DELETE | `/admin/tryouts[/{id}]` | CRUD paket tryout + subtes |
 | POST/PATCH/DELETE | `/admin/products[/{slug}]` | CRUD produk |
 | GET/POST | `/admin/vouchers`, PATCH/DELETE `/admin/vouchers/{code}` | CRUD voucher |
@@ -596,6 +634,59 @@ event: done    data: { "done": true, "message": { … }, "usage": { … } }
 Balasan tetap disimpan walau klien menutup koneksi di tengah jalan, sehingga
 riwayat percakapan tidak kehilangan jawaban yang sudah dihasilkan model.
 
+### 7.1 Asisten HR — tanya jawab analitik SDM
+
+Dasbor analitik HR (`GET /admin/hr/analytics`) punya pendamping percakapan: tim
+HR bisa menanyakan angka, penyebab, dan tindak lanjut tanpa berpindah halaman.
+
+```
+POST   /admin/hr/ai/chat          → { message, history? } → { message, usage, degraded, suggestions }
+POST   /admin/hr/ai/chat/stream   → versi SSE (delta → done)
+GET    /admin/hr/ai/usage         → kuota harian admin
+```
+
+Perbedaan penting dari mentor:
+
+| Aspek | Mentor ("MinSmart") | Asisten HR |
+| --- | --- | --- |
+| Cakupan data | satu hasil tryout milik peserta | agregat kohort (11 peserta demo) |
+| Riwayat percakapan | disimpan di server (`ai_conversations`) | dikirim klien, tidak disimpan |
+| Blok konteks | `<KONTEKS_HASIL_TRYOUT>` | `<DATA_ANALITIK_HR>` |
+| Identitas peserta | hanya dirinya sendiri | nama pada daftar berprestasi & pendampingan |
+| Endpoint | `/attempts/{id}/ai/*` | `/admin/hr/ai/*` (wajib admin) |
+
+Fakta yang dikirim ke model identik dengan yang tampil di dasbor: headcount &
+partisipasi, kesiapan (rata-rata, ambang, tingkat di atas ambang), kelengkapan
+belajar, sebaran skor, profil kompetensi per kategori, tren enam bulan, capaian
+per program, serta daftar peserta berprestasi dan perlu pendampingan. Konteks
+dibangun **ulang setiap permintaan** sehingga jawaban selalu mengikuti data
+terbaru.
+
+Pagar pengaman yang berlaku: ambang hanya ambang latihan internal (bukan
+prediksi kelulusan), kunci jawaban/isi soal tidak pernah dibocorkan, data
+pribadi (email, telepon, unit kerja) tidak tersedia di konteks, dan instruksi di
+dalam pesan pengguna yang mencoba menimpa aturan akan diabaikan. Riwayat dari
+klien dibatasi 12 pesan, disanitasi, dan penanda blok data dinetralkan agar
+tidak bisa dipalsukan.
+
+Pada provider `stub` (default), asisten HR menjawab dari heuristik lokal:
+maksud pertanyaan dipetakan ke bagian data yang relevan (partisipasi, kesiapan,
+kelengkapan belajar, profil kompetensi, program, tren, sebaran, peserta
+berprestasi, peserta perlu pendampingan) dengan angka nyata dari basis data.
+
+```json
+// POST /admin/hr/ai/chat
+{ "message": "berapa peserta yang belum berlatih?", "history": [] }
+
+// 200 OK
+{
+  "message": { "role": "assistant", "content": "### Partisipasi latihan\n\n- Peserta terdaftar: **11**\n…" },
+  "usage": { "requests": 1, "dailyQuota": 120, "remaining": 119 },
+  "degraded": false,
+  "suggestions": ["Ringkas kondisi kesiapan peserta dan soroti angkanya", "…"]
+}
+```
+
 ---
 
 ## 8. Optimasi untuk tryout serentak
@@ -727,6 +818,13 @@ galat dari API Midtrans (memakai `httptest`).
 Ditambah pengujian lapisan mentor AI: urutan kekuatan/kelemahan subtes,
 perhitungan kesiapan, pemotongan konteks, netralisasi prompt injection,
 pembersihan balasan model, serta batas jumlah butir analisis.
+
+Ditambah pengujian asisten HR: blok `<DATA_ANALITIK_HR>` bolak-balik
+(render → parse), turunan fakta (kategori terlemah/terkuat, program terbesar,
+peserta belum berlatih), pemetaan DTO analitik → fakta prompt, penyaringan
+riwayat dari klien, serta heuristik stub untuk tiap maksud pertanyaan —
+termasuk penjagaan agar kata kunci bertabrakan tidak salah tangkap
+(mis. "siapa" tidak dianggap "siap").
 
 ```
 ok  internal/ai         ok  internal/cache      ok  internal/middleware

@@ -208,6 +208,8 @@ func SanitizeUserInput(raw string, maxLen int) string {
 	replacer := strings.NewReplacer(
 		contextOpen, "[konteks]",
 		contextClose, "[/konteks]",
+		hrContextOpen, "[data-hr]",
+		hrContextClose, "[/data-hr]",
 		"[[SOAL:", "[soal:",
 		"[[AUTO]]", "[auto]",
 	)

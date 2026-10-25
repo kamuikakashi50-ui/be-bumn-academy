@@ -79,14 +79,24 @@ func TestRemainingSeconds(t *testing.T) {
 }
 
 func TestSubtestQuestionCount(t *testing.T) {
-	counts := map[string]int{"numerik": 5, "verbal": 3}
+	counts := map[string]map[string]int{
+		"to-tkd-01": {"numerik": 5, "verbal": 3},
+		"to-tkd-02": {"numerik": 2},
+	}
 	subtest := models.Subtest{Banks: models.StringList{"numerik", "verbal", "tidak-ada"}}
 
-	if got := subtestQuestionCount(subtest, counts); got != 8 {
+	if got := subtestQuestionCount("to-tkd-01", subtest, counts); got != 8 {
 		t.Errorf("subtestQuestionCount = %d, harap 8", got)
 	}
-	if got := subtestQuestionCount(models.Subtest{}, counts); got != 0 {
+	// Soal milik tryout lain tidak boleh ikut terhitung.
+	if got := subtestQuestionCount("to-tkd-02", subtest, counts); got != 2 {
+		t.Errorf("subtestQuestionCount tryout lain = %d, harap 2", got)
+	}
+	if got := subtestQuestionCount("to-tkd-01", models.Subtest{}, counts); got != 0 {
 		t.Errorf("subtes tanpa bank = %d, harap 0", got)
+	}
+	if got := subtestQuestionCount("to-tidak-ada", subtest, counts); got != 0 {
+		t.Errorf("tryout tanpa soal = %d, harap 0", got)
 	}
 }
 

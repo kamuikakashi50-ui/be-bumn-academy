@@ -21,6 +21,8 @@ import (
 // Kolom yang dikenali (nama kolom tidak peka huruf besar/kecil):
 //
 //	bankKey / kategori   → kunci bank soal (numerik, verbal, …)
+//	tryoutId / tryout    → paket tryout pemilik soal (opsional bila
+//	                       `defaultTryoutID` dikirim dari formulir)
 //	text / soal          → isi pertanyaan
 //	optionA..optionD     → pilihan jawaban (atau "options" dipisah "|")
 //	answer / kunci       → huruf (A–D) atau angka indeks
@@ -30,8 +32,10 @@ import (
 //	position             → urutan dalam bank (opsional)
 //
 // Baris yang gagal dilewati dan dilaporkan pada `errors`, sehingga satu berkas
-// besar tidak perlu diulang hanya karena beberapa baris bermasalah.
-func (s *AdminService) ImportQuestions(ctx context.Context, filename string, data []byte) (*dto.ImportResult, error) {
+// besar tidak perlu diulang hanya karena beberapa baris bermasalah. Baris tanpa
+// tryout (kolom kosong dan tanpa `defaultTryoutID`) tetap diimpor sebagai soal
+// "belum ditautkan" dan dihitung pada `unassigned`.
+func (s *AdminService) ImportQuestions(ctx context.Context, filename string, data []byte, defaultTryoutID string) (*dto.ImportResult, error) {
 	rows, err := readTabularRows(filename, data)
 	if err != nil {
 		return nil, err
@@ -45,6 +49,20 @@ func (s *AdminService) ImportQuestions(ctx context.Context, filename string, dat
 		header[normalizeHeader(name)] = index
 	}
 
+	// Daftar tryout dipakai untuk memvalidasi kolom tryoutId per baris sekaligus
+	// menjadi himpunan valid — sekali query, bukan per baris.
+	titles, err := s.tryoutTitles(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	defaultTryout := strings.TrimSpace(defaultTryoutID)
+	if defaultTryout != "" {
+		if _, ok := titles[defaultTryout]; !ok {
+			return nil, apperror.Validation("Tryout tujuan tidak ditemukan.", nil)
+		}
+	}
+
 	result := &dto.ImportResult{BankKeys: map[string]int{}}
 	questions := make([]models.Question, 0, len(rows)-1)
 
@@ -55,7 +73,7 @@ func (s *AdminService) ImportQuestions(ctx context.Context, filename string, dat
 		}
 		result.TotalRows++
 
-		question, err := s.parseImportRow(row, header, excelRow)
+		question, err := s.parseImportRow(row, header, excelRow, titles, defaultTryout)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, dto.ImportRowError{Row: excelRow, Message: err.Error()})
@@ -64,6 +82,9 @@ func (s *AdminService) ImportQuestions(ctx context.Context, filename string, dat
 
 		questions = append(questions, question)
 		result.BankKeys[question.BankKey]++
+		if question.TryoutID == nil {
+			result.Unassigned++
+		}
 	}
 
 	if len(questions) == 0 {
@@ -92,13 +113,33 @@ func (s *AdminService) ImportQuestions(ctx context.Context, filename string, dat
 }
 
 // parseImportRow mengubah satu baris berkas menjadi model soal.
-func (s *AdminService) parseImportRow(row []string, header map[string]int, excelRow int) (models.Question, error) {
+//
+// `validTryouts` adalah peta id → judul paket tryout (dipakai memvalidasi kolom
+// tryoutId tanpa query per baris); `defaultTryoutID` dipakai bila baris tidak
+// menyebut tryout.
+func (s *AdminService) parseImportRow(
+	row []string,
+	header map[string]int,
+	excelRow int,
+	validTryouts map[string]string,
+	defaultTryoutID string,
+) (models.Question, error) {
 	bankKey := strings.TrimSpace(cell(row, header, "bankkey", "kategori", "bank"))
 	if bankKey == "" {
 		return models.Question{}, fmt.Errorf("kolom bankKey/kategori kosong")
 	}
 	if !bank.IsValid(bankKey) {
 		return models.Question{}, fmt.Errorf("kategori soal %q tidak dikenal", bankKey)
+	}
+
+	tryoutID := strings.TrimSpace(cell(row, header, "tryoutid", "tryout", "pakettryout"))
+	if tryoutID == "" {
+		tryoutID = defaultTryoutID
+	}
+	if tryoutID != "" {
+		if _, ok := validTryouts[tryoutID]; !ok {
+			return models.Question{}, fmt.Errorf("tryoutId %q tidak dikenali", tryoutID)
+		}
 	}
 
 	text := strings.TrimSpace(cell(row, header, "text", "soal", "pertanyaan", "question"))
@@ -135,7 +176,7 @@ func (s *AdminService) parseImportRow(row []string, header map[string]int, excel
 		position = parsed
 	}
 
-	return models.Question{
+	question := models.Question{
 		ID:          id,
 		BankKey:     bankKey,
 		Text:        text,
@@ -145,7 +186,11 @@ func (s *AdminService) parseImportRow(row []string, header map[string]int, excel
 		Difficulty:  difficultyOr(strings.ToLower(strings.TrimSpace(cell(row, header, "difficulty", "kesulitan")))),
 		Position:    position,
 		Active:      true,
-	}, nil
+	}
+	if tryoutID != "" {
+		question.TryoutID = &tryoutID
+	}
+	return question, nil
 }
 
 // collectOptions mengambil pilihan jawaban dari kolom optionA..optionF atau

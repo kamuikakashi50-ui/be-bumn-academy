@@ -33,7 +33,9 @@ type Deps struct {
 	Corporate *service.CorporateService
 	Admin     *service.AdminService
 	HR        *service.HRService
-	Mentor    *service.MentorService
+	// HRChat adalah asisten HR (AI) pada dasbor analitik HR.
+	HRChat *service.HRChatService
+	Mentor *service.MentorService
 }
 
 // decodeJSON membaca body JSON dan memvalidasi struct tujuan.

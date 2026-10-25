@@ -80,3 +80,41 @@ type TopLearnerView struct {
 	LastActivity string `json:"lastActivity,omitempty"`
 	Note         string `json:"note"`
 }
+
+/* ------------------------------- asisten HR (AI) --------------------------- */
+
+// HRChatHistoryItem adalah satu pesan riwayat percakapan yang dikirim klien.
+//
+// Asisten HR tidak menyimpan percakapan di server — konteksnya adalah data
+// kohort, bukan satu hasil tryout — sehingga kesinambungan percakapan dijaga
+// oleh klien dan diverifikasi ulang di server.
+type HRChatHistoryItem struct {
+	Role    string `json:"role" validate:"required,oneof=user assistant"`
+	Content string `json:"content" validate:"required,min=1,max=2000"`
+}
+
+// HRChatRequest adalah pertanyaan tim HR pada asisten HR.
+type HRChatRequest struct {
+	Message string `json:"message" validate:"required,min=2,max=1500"`
+	// History dibatasi agar konteks prompt tidak bisa dibanjiri klien.
+	History []HRChatHistoryItem `json:"history" validate:"omitempty,max=12,dive"`
+}
+
+// HRChatMessageView adalah satu balasan asisten HR.
+type HRChatMessageView struct {
+	ID        string `json:"id"`
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	Provider  string `json:"provider,omitempty"`
+	Model     string `json:"model,omitempty"`
+	LatencyMS int    `json:"latencyMs,omitempty"`
+	CreatedAt string `json:"createdAt"`
+}
+
+// HRChatResponse adalah balasan asisten HR untuk satu pertanyaan.
+type HRChatResponse struct {
+	Message     HRChatMessageView `json:"message"`
+	Usage       AIUsageView       `json:"usage"`
+	Degraded    bool              `json:"degraded"`
+	Suggestions []string          `json:"suggestions"`
+}

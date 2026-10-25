@@ -50,6 +50,72 @@ func TestDataDemoSesuaiKontrak(t *testing.T) {
 }
 
 // TestIdSoalUnik memastikan tidak ada id soal yang tertulis dua kali.
+// TestSetiapBankSoalDipakaiTryout memastikan tidak ada bank soal yang
+// "menganggur": soal pada bank yang tidak dicantumkan subtes mana pun tidak akan
+// pernah tampil di sesi tryout (hanya muncul sebagai "belum ditautkan" di panel).
+func TestSetiapBankSoalDipakaiTryout(t *testing.T) {
+	data, err := loadDataset()
+	if err != nil {
+		t.Fatalf("loadDataset error: %v", err)
+	}
+
+	used := map[string]bool{}
+	for _, tryout := range data.Tryouts {
+		for _, subtest := range tryout.Subtests {
+			for _, bankKey := range subtest.Banks {
+				used[bankKey] = true
+			}
+		}
+	}
+
+	for _, question := range data.Questions {
+		if !used[question.BankKey] {
+			t.Errorf("bank %s (soal %s) tidak dipakai subtes mana pun", question.BankKey, question.ID)
+		}
+	}
+}
+
+// TestEkspansiSoalPerTryout menjaga jumlah baris soal yang dihasilkan seed.
+//
+// Sejak migrasi 000011 satu soal dimiliki satu tryout, jadi definisi soal yang
+// bank-nya dipakai beberapa tryout digandakan: 45 definisi pada data.json menjadi
+// 103 baris di database (angka ini juga disebut pada README).
+func TestEkspansiSoalPerTryout(t *testing.T) {
+	data, err := loadDataset()
+	if err != nil {
+		t.Fatalf("loadDataset error: %v", err)
+	}
+
+	banksPerTryout := make([]map[string]bool, 0, len(data.Tryouts))
+	for _, tryout := range data.Tryouts {
+		banks := map[string]bool{}
+		for _, subtest := range tryout.Subtests {
+			for _, bankKey := range subtest.Banks {
+				banks[bankKey] = true
+			}
+		}
+		banksPerTryout = append(banksPerTryout, banks)
+	}
+
+	total := 0
+	for _, question := range data.Questions {
+		owners := 0
+		for _, banks := range banksPerTryout {
+			if banks[question.BankKey] {
+				owners++
+			}
+		}
+		if owners == 0 {
+			owners = 1 // disimpan sebagai soal "belum ditautkan"
+		}
+		total += owners
+	}
+
+	if total != 103 {
+		t.Errorf("jumlah baris soal setelah ekspansi per tryout = %d, harap 103", total)
+	}
+}
+
 func TestIdSoalUnik(t *testing.T) {
 	data, err := loadDataset()
 	if err != nil {

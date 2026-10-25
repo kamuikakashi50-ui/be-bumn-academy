@@ -44,25 +44,29 @@ func NewTryoutService(
 	}
 }
 
-// bankQuestions mengambil soal sebuah bank dari cache (TTL dari konfigurasi).
+// bankQuestions mengambil soal sebuah bank MILIK satu tryout dari cache.
 //
-// Bank soal jarang berubah tetapi dibaca setiap kali peserta memulai sesi,
-// jadi ini titik caching paling berdampak saat tryout serentak.
-func (s *TryoutService) bankQuestions(ctx context.Context, bankKey string) ([]models.Question, error) {
-	return cache.Remember(ctx, s.cache, cache.KeyQuestionBank(bankKey), s.cfg.Redis.QuestionBankTTL,
+// Bank soal jarang berubah tetapi dibaca setiap kali peserta memulai sesi, jadi
+// ini titik caching paling berdampak saat tryout serentak. Kunci cache memuat
+// `tryoutID` karena soal sekarang dimiliki per paket tryout.
+func (s *TryoutService) bankQuestions(ctx context.Context, tryoutID, bankKey string) ([]models.Question, error) {
+	return cache.Remember(ctx, s.cache, cache.KeyQuestionBank(tryoutID, bankKey), s.cfg.Redis.QuestionBankTTL,
 		func(ctx context.Context) ([]models.Question, error) {
-			return s.tryouts.QuestionsByBanks(ctx, []string{bankKey})
+			return s.tryouts.QuestionsByBanks(ctx, tryoutID, []string{bankKey})
 		})
 }
 
-// bankCounts mengembalikan jumlah soal per bank (dipakai daftar tryout).
-func (s *TryoutService) bankCounts(ctx context.Context) (map[string]int, error) {
+// bankCounts mengembalikan jumlah soal per (tryout, bank).
+//
+// Dipakai daftar & detail tryout untuk menampilkan jumlah soal tiap subtes
+// tanpa query per paket.
+func (s *TryoutService) bankCounts(ctx context.Context) (map[string]map[string]int, error) {
 	type cached struct {
-		Counts map[string]int
+		Counts map[string]map[string]int
 	}
 	result, err := cache.Remember(ctx, s.cache, "bank:counts", s.cfg.Redis.QuestionBankTTL,
 		func(ctx context.Context) (cached, error) {
-			counts, err := s.tryouts.CountQuestionsByBank(ctx)
+			counts, err := s.tryouts.CountQuestionsByTryout(ctx)
 			if err != nil {
 				return cached{}, err
 			}
@@ -72,7 +76,7 @@ func (s *TryoutService) bankCounts(ctx context.Context) (map[string]int, error) 
 		return nil, err
 	}
 	if result.Counts == nil {
-		return map[string]int{}, nil
+		return map[string]map[string]int{}, nil
 	}
 	return result.Counts, nil
 }
@@ -100,11 +104,13 @@ func (s *TryoutService) QuestionsForPackage(ctx context.Context, pkg *models.Try
 	return s.questionsForSession(ctx, pkg)
 }
 
-// subtestQuestionCount menghitung jumlah soal sebuah subtes dari jumlah per bank.
-func subtestQuestionCount(subtest models.Subtest, counts map[string]int) int {
+// subtestQuestionCount menghitung jumlah soal sebuah subtes dari jumlah soal per
+// (tryout, bank) — soal milik tryout lain tidak ikut dihitung walau bank-nya sama.
+func subtestQuestionCount(tryoutID string, subtest models.Subtest, counts map[string]map[string]int) int {
+	perBank := counts[tryoutID]
 	total := 0
 	for _, bankKey := range subtest.Banks {
-		total += counts[bankKey]
+		total += perBank[bankKey]
 	}
 	return total
 }
@@ -357,7 +363,7 @@ func (s *TryoutService) buildQuestionOrder(ctx context.Context, pkg models.Tryou
 	for i, subtest := range pkg.Subtests {
 		ids := make([]string, 0, 16)
 		for _, bankKey := range subtest.Banks {
-			questions, err := s.bankQuestions(ctx, bankKey)
+			questions, err := s.bankQuestions(ctx, pkg.ID, bankKey)
 			if err != nil {
 				return nil, err
 			}
@@ -375,7 +381,7 @@ func (s *TryoutService) questionsForSession(ctx context.Context, pkg *models.Try
 	out := map[string]models.Question{}
 	for _, subtest := range pkg.Subtests {
 		for _, bankKey := range subtest.Banks {
-			questions, err := s.bankQuestions(ctx, bankKey)
+			questions, err := s.bankQuestions(ctx, pkg.ID, bankKey)
 			if err != nil {
 				return nil, err
 			}
@@ -1022,7 +1028,7 @@ func (s *TryoutService) ScoreTrend(ctx context.Context, userID string, limit int
 func (s *TryoutService) PassingThreshold() int { return s.cfg.Business.PassingThreshold }
 func (s *TryoutService) toSummary(
 	pkg models.TryoutPackage,
-	counts map[string]int,
+	counts map[string]map[string]int,
 	owned map[string]bool,
 	usedPerTryout map[string]int,
 	activeSessions map[string]string,
@@ -1032,7 +1038,7 @@ func (s *TryoutService) toSummary(
 	questionCount := 0
 	minutes := 0
 	for _, subtest := range pkg.Subtests {
-		subCount := subtestQuestionCount(subtest, counts)
+		subCount := subtestQuestionCount(pkg.ID, subtest, counts)
 		questionCount += subCount
 		minutes += subtest.Minutes
 		subtests = append(subtests, toSubtestView(subtest, subCount))

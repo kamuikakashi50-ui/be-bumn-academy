@@ -64,8 +64,14 @@ func (p *StubProvider) Stream(_ context.Context, req Request) (<-chan Chunk, err
 }
 
 // render memilih bentuk balasan: JSON terstruktur untuk analisis, teks markdown
-// untuk percakapan.
+// untuk percakapan mentor, dan ringkasan analitik untuk asisten HR.
 func (p *StubProvider) render(req Request) string {
+	// Blok data analitik HR memakai penyaji tersendiri karena pertanyaannya
+	// seputar kohort, bukan hasil satu peserta.
+	if hrCtx, ok := ParseHRContextFromMessages(req.Messages); ok {
+		return p.renderHRChat(hrCtx, req.Messages)
+	}
+
 	ctx, ok := ParseContextFromMessages(req.Messages)
 	if !ok {
 		return "Aku belum menerima konteks hasil tryout. Buka halaman hasil tryout lalu mulai ulasan dari sana, ya."

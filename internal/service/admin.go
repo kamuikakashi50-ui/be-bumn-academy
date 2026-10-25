@@ -267,16 +267,58 @@ func (s *AdminService) MarkOrderPaid(ctx context.Context, orderID string) (*dto.
 /* ---------------------------------- soal ---------------------------------- */
 
 // ListQuestions mengambil daftar soal untuk dashboard admin.
+//
+// Setiap soal disertai judul tryout pemiliknya agar panel bank soal bisa
+// dikelompokkan per tryout tanpa permintaan tambahan dari klien.
 func (s *AdminService) ListQuestions(ctx context.Context, filter repository.QuestionFilter, page, perPage int) ([]dto.QuestionView, int64, error) {
 	rows, total, err := s.tryouts.ListQuestions(ctx, filter, page, perPage)
 	if err != nil {
 		return nil, 0, err
 	}
+
+	titles, err := s.tryoutTitles(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	out := make([]dto.QuestionView, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, toQuestionView(row))
+		view := toQuestionView(row)
+		if row.TryoutID != nil {
+			view.TryoutTitle = titles[*row.TryoutID]
+		}
+		out = append(out, view)
 	}
 	return out, total, nil
+}
+
+// tryoutTitles memetakan id paket tryout → judulnya (dipakai panel bank soal
+// untuk menampilkan pengelompokan per tryout).
+func (s *AdminService) tryoutTitles(ctx context.Context) (map[string]string, error) {
+	packages, err := s.tryouts.ListPackages(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(packages))
+	for _, pkg := range packages {
+		out[pkg.ID] = pkg.Title
+	}
+	return out, nil
+}
+
+// ensureTryoutExists memastikan paket tryout yang dikirim admin benar-benar ada,
+// karena satu soal wajib dimiliki satu tryout. Id beserta judulnya dikembalikan
+// agar balasan create/update bisa langsung menampilkan pengelompokannya.
+func (s *AdminService) ensureTryoutExists(ctx context.Context, tryoutID string) (string, string, error) {
+	id := strings.TrimSpace(tryoutID)
+	if id == "" {
+		return "", "", apperror.Validation("Tryout soal wajib dipilih.", nil)
+	}
+	pkg, err := s.tryouts.FindPackage(ctx, id)
+	if err != nil {
+		return "", "", err
+	}
+	return id, pkg.Title, nil
 }
 
 // CreateQuestion menambahkan satu soal baru.
@@ -285,7 +327,12 @@ func (s *AdminService) CreateQuestion(ctx context.Context, req dto.CreateQuestio
 		return nil, err
 	}
 
-	position, err := s.tryouts.NextQuestionPosition(ctx, req.BankKey)
+	tryoutID, tryoutTitle, err := s.ensureTryoutExists(ctx, req.TryoutID)
+	if err != nil {
+		return nil, err
+	}
+
+	position, err := s.tryouts.NextQuestionPosition(ctx, tryoutID, req.BankKey)
 	if err != nil {
 		return nil, err
 	}
@@ -293,6 +340,7 @@ func (s *AdminService) CreateQuestion(ctx context.Context, req dto.CreateQuestio
 	question := models.Question{
 		ID:          strings.TrimSpace(req.ID),
 		BankKey:     req.BankKey,
+		TryoutID:    &tryoutID,
 		Text:        req.Text,
 		Options:     models.StringList(req.Options),
 		AnswerIndex: req.AnswerIndex,
@@ -311,6 +359,7 @@ func (s *AdminService) CreateQuestion(ctx context.Context, req dto.CreateQuestio
 	s.tryoutSvc.InvalidateBankCache(ctx)
 
 	view := toQuestionView(question)
+	view.TryoutTitle = tryoutTitle
 	return &view, nil
 }
 
@@ -323,6 +372,13 @@ func (s *AdminService) UpdateQuestion(ctx context.Context, id string, req dto.Up
 
 	if req.BankKey != nil {
 		question.BankKey = *req.BankKey
+	}
+	if req.TryoutID != nil {
+		tryoutID, _, err := s.ensureTryoutExists(ctx, *req.TryoutID)
+		if err != nil {
+			return nil, err
+		}
+		question.TryoutID = &tryoutID
 	}
 	if req.Text != nil {
 		question.Text = *req.Text

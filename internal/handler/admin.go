@@ -90,6 +90,7 @@ func (h *AdminHandler) ListQuestions(w http.ResponseWriter, r *http.Request) {
 	page := paginationFrom(r)
 	filter := repository.QuestionFilter{
 		BankKey:    r.URL.Query().Get("bankKey"),
+		TryoutID:   r.URL.Query().Get("tryoutId"),
 		Search:     r.URL.Query().Get("search"),
 		Difficulty: r.URL.Query().Get("difficulty"),
 		ActiveOnly: queryBool(r, "activeOnly"),
@@ -161,7 +162,11 @@ func (h *AdminHandler) ImportQuestions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.deps.Admin.ImportQuestions(r.Context(), header.Filename, data)
+	// `tryoutId` opsional dari formulir: dipakai untuk baris yang tidak menyebut
+	// tryout di dalam berkasnya sendiri.
+	result, err := h.deps.Admin.ImportQuestions(
+		r.Context(), header.Filename, data, r.FormValue("tryoutId"),
+	)
 	if err != nil {
 		response.Fail(w, err)
 		return

@@ -19,11 +19,17 @@ func (d Difficulty) Valid() bool {
 
 // Question adalah satu butir soal pada bank soal.
 //
+// `BankKey` menentukan subtes mana yang memakai soal ini (lewat `Subtest.Banks`),
+// sedangkan `TryoutID` menentukan paket tryout pemiliknya — satu soal dimiliki
+// SATU tryout, sehingga panel bank soal bisa dikelompokkan per tryout. Nilai
+// NULL berarti soal belum ditautkan ke tryout mana pun (warisan data lama).
+//
 // `AnswerIndex` dan `Explanation` TIDAK PERNAH dikirim ke klien selama sesi
 // tryout berjalan — keduanya baru dibuka pada endpoint review setelah submit.
 type Question struct {
 	ID          string     `gorm:"column:id;primaryKey" json:"id"`
 	BankKey     string     `gorm:"column:bank_key;not null" json:"bankKey"`
+	TryoutID    *string    `gorm:"column:tryout_id" json:"tryoutId,omitempty"`
 	Text        string     `gorm:"column:text;not null" json:"text"`
 	Options     StringList `gorm:"column:options;type:jsonb;not null;default:'[]'" json:"options"`
 	AnswerIndex int        `gorm:"column:answer_index;not null" json:"answerIndex"`

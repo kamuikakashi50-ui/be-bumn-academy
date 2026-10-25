@@ -4,8 +4,10 @@ package dto
 
 // CreateQuestionRequest adalah payload tambah soal.
 type CreateQuestionRequest struct {
-	ID          string   `json:"id" validate:"omitempty,max=64"`
-	BankKey     string   `json:"bankKey" validate:"required,max=40"`
+	ID      string `json:"id" validate:"omitempty,max=64"`
+	BankKey string `json:"bankKey" validate:"required,max=40"`
+	// TryoutID wajib: satu soal dimiliki satu paket tryout.
+	TryoutID    string   `json:"tryoutId" validate:"required,max=64"`
 	Text        string   `json:"text" validate:"required,min=5"`
 	Options     []string `json:"options" validate:"required,min=2,max=6,dive,required"`
 	AnswerIndex int      `json:"answerIndex" validate:"gte=0,lte=5"`
@@ -17,6 +19,7 @@ type CreateQuestionRequest struct {
 // UpdateQuestionRequest adalah payload ubah soal.
 type UpdateQuestionRequest struct {
 	BankKey     *string   `json:"bankKey" validate:"omitempty,max=40"`
+	TryoutID    *string   `json:"tryoutId" validate:"omitempty,max=64"`
 	Text        *string   `json:"text" validate:"omitempty,min=5"`
 	Options     *[]string `json:"options" validate:"omitempty,min=2,max=6,dive,required"`
 	AnswerIndex *int      `json:"answerIndex" validate:"omitempty,gte=0,lte=5"`
@@ -30,6 +33,8 @@ type QuestionView struct {
 	ID          string   `json:"id"`
 	BankKey     string   `json:"bankKey"`
 	BankLabel   string   `json:"bankLabel,omitempty"`
+	TryoutID    string   `json:"tryoutId,omitempty"`
+	TryoutTitle string   `json:"tryoutTitle,omitempty"`
 	Text        string   `json:"text"`
 	Options     []string `json:"options"`
 	AnswerIndex int      `json:"answerIndex"`
@@ -116,12 +121,15 @@ type UpdateVoucherRequest struct {
 
 // ImportResult adalah hasil import soal dari Excel/CSV.
 type ImportResult struct {
-	TotalRows int              `json:"totalRows"`
-	Imported  int              `json:"imported"`
-	Updated   int              `json:"updated"`
-	Failed    int              `json:"failed"`
-	Errors    []ImportRowError `json:"errors,omitempty"`
-	BankKeys  map[string]int   `json:"bankKeys"`
+	TotalRows int `json:"totalRows"`
+	Imported  int `json:"imported"`
+	Updated   int `json:"updated"`
+	Failed    int `json:"failed"`
+	// Unassigned adalah jumlah baris yang belum ditautkan ke tryout mana pun
+	// (kolom tryoutId kosong dan tidak ada tryout tujuan dari formulir).
+	Unassigned int              `json:"unassigned"`
+	Errors     []ImportRowError `json:"errors,omitempty"`
+	BankKeys   map[string]int   `json:"bankKeys"`
 }
 
 // ImportRowError adalah kesalahan pada satu baris berkas import.
