@@ -13,29 +13,48 @@ import (
 	"github.com/bumn-academy/be-bumn-academy/internal/models"
 	"github.com/bumn-academy/be-bumn-academy/internal/pkg/apperror"
 	"github.com/bumn-academy/be-bumn-academy/internal/pkg/bank"
+	"github.com/bumn-academy/be-bumn-academy/internal/pkg/fingerprint"
 	"github.com/xuri/excelize/v2"
 )
+
+// importDuplicateLimit membatasi jumlah temuan soal kembar yang dilaporkan pada
+// hasil import: cukup untuk ditinjau, tidak membuat balasan API membengkak.
+const importDuplicateLimit = 50
 
 // ImportQuestions mengimpor soal dari berkas Excel (.xlsx) atau CSV.
 //
 // Kolom yang dikenali (nama kolom tidak peka huruf besar/kecil):
 //
-//	bankKey / kategori   → kunci bank soal (numerik, verbal, …)
-//	tryoutId / tryout    → paket tryout pemilik soal (opsional bila
-//	                       `defaultTryoutID` dikirim dari formulir)
-//	text / soal          → isi pertanyaan
-//	optionA..optionD     → pilihan jawaban (atau "options" dipisah "|")
-//	answer / kunci       → huruf (A–D) atau angka indeks
-//	explanation          → pembahasan
-//	difficulty           → mudah | sedang | sulit (opsional)
-//	id                   → id soal (opsional; kosong = dibuat otomatis)
-//	position             → urutan dalam bank (opsional)
+//	bankKey / kategori    → kunci bank soal (numerik, verbal, …)
+//	tryoutId / tryout     → paket tryout pemilik soal (opsional bila
+//	                        `defaultTryoutID` dikirim dari formulir)
+//	sectorKey / sektor    → sektor/klaster BUMN (mis. jasa_keuangan)
+//	testType / jenistes   → jenis tes (tkd, akhlaq, twk, bing, tkb, psikotes)
+//	positionFamily        → keluarga jabatan (mis. keuangan, ti)
+//	companyKey            → BUMN tertentu (opsional)
+//	variantGroup / varian → grup varian soal sekeluarga
+//	retentionUntil        → batas masa simpan soal (opsional)
+//	text / soal           → isi pertanyaan
+//	optionA..optionD      → pilihan jawaban (atau "options" dipisah "|")
+//	answer / kunci        → huruf (A–D) atau angka indeks
+//	explanation           → pembahasan
+//	difficulty            → mudah | sedang | sulit (opsional)
+//	id                    → id soal (opsional; kosong = dibuat otomatis)
+//	position              → urutan dalam bank (opsional)
+//	licenseScope          → internal | vendor | public_domain | client_owned
+//	licenseOwner          → pemilik hak cipta (opsional)
+//	agreementNo           → nomor perjanjian (WAJIB bila lisensi vendor)
+//	licenseValidUntil     → masa berlaku izin (opsional)
 //
 // Baris yang gagal dilewati dan dilaporkan pada `errors`, sehingga satu berkas
 // besar tidak perlu diulang hanya karena beberapa baris bermasalah. Baris tanpa
 // tryout (kolom kosong dan tanpa `defaultTryoutID`) tetap diimpor sebagai soal
 // "belum ditautkan" dan dihitung pada `unassigned`.
-func (s *AdminService) ImportQuestions(ctx context.Context, filename string, data []byte, defaultTryoutID string) (*dto.ImportResult, error) {
+//
+// Setelah tersimpan, tiap soal baru mendapat izin (default: milik sendiri),
+// sidik jari teksnya dihitung, dan kemungkinan soal kembar dilaporkan pada
+// `duplicates` — import tetap berjalan, temuan itu bahan tinjauan tim akademik.
+func (s *AdminService) ImportQuestions(ctx context.Context, actorID, filename string, data []byte, defaultTryoutID string) (*dto.ImportResult, error) {
 	rows, err := readTabularRows(filename, data)
 	if err != nil {
 		return nil, err
@@ -65,6 +84,7 @@ func (s *AdminService) ImportQuestions(ctx context.Context, filename string, dat
 
 	result := &dto.ImportResult{BankKeys: map[string]int{}}
 	questions := make([]models.Question, 0, len(rows)-1)
+	licenses := make(map[string]*dto.QuestionLicenseInput, len(rows)-1)
 
 	for rowIndex, row := range rows[1:] {
 		excelRow := rowIndex + 2 // baris 1 = header
@@ -73,16 +93,17 @@ func (s *AdminService) ImportQuestions(ctx context.Context, filename string, dat
 		}
 		result.TotalRows++
 
-		question, err := s.parseImportRow(row, header, excelRow, titles, defaultTryout)
+		parsed, err := s.parseImportRow(row, header, excelRow, titles, defaultTryout)
 		if err != nil {
 			result.Failed++
 			result.Errors = append(result.Errors, dto.ImportRowError{Row: excelRow, Message: err.Error()})
 			continue
 		}
 
-		questions = append(questions, question)
-		result.BankKeys[question.BankKey]++
-		if question.TryoutID == nil {
+		questions = append(questions, parsed.question)
+		licenses[parsed.question.ID] = parsed.license
+		result.BankKeys[parsed.question.BankKey]++
+		if parsed.question.TryoutID == nil {
 			result.Unassigned++
 		}
 	}
@@ -107,9 +128,31 @@ func (s *AdminService) ImportQuestions(ctx context.Context, filename string, dat
 	if err := s.tryouts.BulkUpsertQuestions(ctx, questions); err != nil {
 		return nil, err
 	}
-	s.tryoutSvc.InvalidateBankCache(ctx)
 
+	// Izin: soal yang sudah punya izin tidak ditimpa berkas import.
+	if s.licenses != nil {
+		if _, err := s.licenses.EnsureLicensesForQuestions(ctx, licenses); err != nil {
+			return nil, err
+		}
+	}
+
+	// Sidik jari & temuan kembar (masukan "susah mencari soal yang sama").
+	if s.compliance != nil {
+		for _, question := range questions {
+			s.compliance.Refresh(ctx, question, actorID, models.QuestionActionImport,
+				"Soal masuk lewat import "+filename+".")
+		}
+		result.Duplicates = s.compliance.HintsFor(ctx, questions, fingerprint.DefaultThreshold, importDuplicateLimit)
+	}
+
+	s.tryoutSvc.InvalidateBankCache(ctx)
 	return result, nil
+}
+
+// importRow adalah satu baris berkas import yang sudah lolos parsing.
+type importRow struct {
+	question models.Question
+	license  *dto.QuestionLicenseInput
 }
 
 // parseImportRow mengubah satu baris berkas menjadi model soal.
@@ -123,13 +166,13 @@ func (s *AdminService) parseImportRow(
 	excelRow int,
 	validTryouts map[string]string,
 	defaultTryoutID string,
-) (models.Question, error) {
+) (importRow, error) {
 	bankKey := strings.TrimSpace(cell(row, header, "bankkey", "kategori", "bank"))
 	if bankKey == "" {
-		return models.Question{}, fmt.Errorf("kolom bankKey/kategori kosong")
+		return importRow{}, fmt.Errorf("kolom bankKey/kategori kosong")
 	}
 	if !bank.IsValid(bankKey) {
-		return models.Question{}, fmt.Errorf("kategori soal %q tidak dikenal", bankKey)
+		return importRow{}, fmt.Errorf("kategori soal %q tidak dikenal", bankKey)
 	}
 
 	tryoutID := strings.TrimSpace(cell(row, header, "tryoutid", "tryout", "pakettryout"))
@@ -138,28 +181,28 @@ func (s *AdminService) parseImportRow(
 	}
 	if tryoutID != "" {
 		if _, ok := validTryouts[tryoutID]; !ok {
-			return models.Question{}, fmt.Errorf("tryoutId %q tidak dikenali", tryoutID)
+			return importRow{}, fmt.Errorf("tryoutId %q tidak dikenali", tryoutID)
 		}
 	}
 
 	text := strings.TrimSpace(cell(row, header, "text", "soal", "pertanyaan", "question"))
 	if text == "" {
-		return models.Question{}, fmt.Errorf("kolom text/soal kosong")
+		return importRow{}, fmt.Errorf("kolom text/soal kosong")
 	}
 
 	options := collectOptions(row, header)
 	if len(options) < 2 {
-		return models.Question{}, fmt.Errorf("minimal dua pilihan jawaban diperlukan")
+		return importRow{}, fmt.Errorf("minimal dua pilihan jawaban diperlukan")
 	}
 
 	answerIndex, err := parseAnswerIndex(cell(row, header, "answer", "kunci", "jawaban", "answerindex"), len(options))
 	if err != nil {
-		return models.Question{}, err
+		return importRow{}, err
 	}
 
 	explanation := strings.TrimSpace(cell(row, header, "explanation", "pembahasan"))
 	if explanation == "" {
-		return models.Question{}, fmt.Errorf("kolom explanation/pembahasan kosong")
+		return importRow{}, fmt.Errorf("kolom explanation/pembahasan kosong")
 	}
 
 	id := strings.TrimSpace(cell(row, header, "id"))
@@ -171,26 +214,74 @@ func (s *AdminService) parseImportRow(
 	if raw := strings.TrimSpace(cell(row, header, "position", "urutan")); raw != "" {
 		parsed, convErr := strconv.Atoi(raw)
 		if convErr != nil {
-			return models.Question{}, fmt.Errorf("kolom position/urutan bukan angka: %q", raw)
+			return importRow{}, fmt.Errorf("kolom position/urutan bukan angka: %q", raw)
 		}
 		position = parsed
 	}
 
+	sectorKey, err := validateSector(cell(row, header, "sectorkey", "sektor"))
+	if err != nil {
+		return importRow{}, fmt.Errorf("kolom sectorKey/sektor tidak dikenal")
+	}
+	testType, err := validateTestType(cell(row, header, "testtype", "jenistes"))
+	if err != nil {
+		return importRow{}, fmt.Errorf("kolom testType/jenistes tidak dikenal")
+	}
+	positionFamily, err := validatePositionFamily(cell(row, header, "positionfamily", "keluargajabatan"))
+	if err != nil {
+		return importRow{}, fmt.Errorf("kolom positionFamily/keluargajabatan tidak dikenal")
+	}
+
+	retention, err := parseOptionalTime(cell(row, header, "retentionuntil", "masasimpan"))
+	if err != nil {
+		return importRow{}, fmt.Errorf("kolom retentionUntil tidak valid")
+	}
+
 	question := models.Question{
-		ID:          id,
-		BankKey:     bankKey,
-		Text:        text,
-		Options:     models.StringList(options),
-		AnswerIndex: answerIndex,
-		Explanation: explanation,
-		Difficulty:  difficultyOr(strings.ToLower(strings.TrimSpace(cell(row, header, "difficulty", "kesulitan")))),
-		Position:    position,
-		Active:      true,
+		ID:             id,
+		BankKey:        bankKey,
+		SectorKey:      sectorKey,
+		CompanyKey:     optionalString(strings.TrimSpace(cell(row, header, "companykey", "bumn"))),
+		TestType:       testType,
+		PositionFamily: positionFamily,
+		VariantGroup:   optionalString(strings.TrimSpace(cell(row, header, "variantgroup", "varian"))),
+		RetentionUntil: retention,
+		Text:           text,
+		Options:        models.StringList(options),
+		AnswerIndex:    answerIndex,
+		Explanation:    explanation,
+		Difficulty:     difficultyOr(strings.ToLower(strings.TrimSpace(cell(row, header, "difficulty", "kesulitan")))),
+		Position:       position,
+		Active:         true,
 	}
 	if tryoutID != "" {
 		question.TryoutID = &tryoutID
 	}
-	return question, nil
+
+	return importRow{question: question, license: importLicense(row, header)}, nil
+}
+
+// importLicense membaca kolom izin pada berkas import.
+//
+// Bila berkas tidak menyebut izin sama sekali, nil dikembalikan dan soal
+// diperlakukan sebagai milik sendiri (`internal`). Baris dengan lisensi vendor
+// tanpa nomor perjanjian akan ditolak saat izinnya disimpan, sehingga tidak ada
+// soal yang status izinnya kabur.
+func importLicense(row []string, header map[string]int) *dto.QuestionLicenseInput {
+	scope := strings.TrimSpace(cell(row, header, "licensescope", "cakupanizin", "cakupan"))
+	owner := strings.TrimSpace(cell(row, header, "licenseowner", "pemilikizin"))
+	agreement := strings.TrimSpace(cell(row, header, "agreementno", "noperjanjian", "nomorperjanjian"))
+	validUntil := strings.TrimSpace(cell(row, header, "licensevaliduntil", "izinsampai"))
+
+	if scope == "" && owner == "" && agreement == "" && validUntil == "" {
+		return nil
+	}
+	return &dto.QuestionLicenseInput{
+		Scope:       scope,
+		Owner:       owner,
+		AgreementNo: agreement,
+		ValidUntil:  validUntil,
+	}
 }
 
 // collectOptions mengambil pilihan jawaban dari kolom optionA..optionF atau

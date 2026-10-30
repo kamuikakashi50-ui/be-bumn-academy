@@ -25,8 +25,12 @@ type CourseModule struct {
 	ProductSlug string `gorm:"column:product_slug;not null" json:"productSlug"`
 	Title       string `gorm:"column:title;not null" json:"title"`
 	Description string `gorm:"column:description;not null;default:''" json:"description"`
-	SortOrder   int    `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
-	Active      bool   `gorm:"column:active;not null" json:"active"`
+	// SectorKey & TestType memakai kunci taksonomi Fase 0 (klaster BUMN & jenis tes),
+	// sehingga jalur belajar dan katalog bisa menyaring modul per kategori.
+	SectorKey string `gorm:"column:sector_key;not null;default:umum" json:"sectorKey"`
+	TestType  string `gorm:"column:test_type;not null;default:tkd" json:"testType"`
+	SortOrder int    `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
+	Active    bool   `gorm:"column:active;not null" json:"active"`
 	// Lessons diisi lewat Preload saat memuat modul.
 	Lessons []Lesson `gorm:"foreignKey:ModuleID" json:"lessons,omitempty"`
 	Timestamps
@@ -51,8 +55,10 @@ type Lesson struct {
 	PosterURL       *string    `gorm:"column:poster_url" json:"posterUrl,omitempty"`
 	Content         string     `gorm:"column:content;not null;default:''" json:"content"`
 	DurationSeconds int        `gorm:"column:duration_seconds;not null;default:0" json:"durationSeconds"`
-	SortOrder       int        `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
-	Active          bool       `gorm:"column:active;not null" json:"active"`
+	// IsPreview menandai materi contoh yang boleh dibuka tanpa akses (katalog).
+	IsPreview bool `gorm:"column:is_preview;not null;default:false" json:"isPreview"`
+	SortOrder int  `gorm:"column:sort_order;not null;default:0" json:"sortOrder"`
+	Active    bool `gorm:"column:active;not null" json:"active"`
 	Timestamps
 }
 

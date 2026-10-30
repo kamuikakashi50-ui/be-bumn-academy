@@ -130,6 +130,13 @@ type QuestionFilter struct {
 	Search     string
 	Difficulty string
 	ActiveOnly bool
+	// Dimensi taksonomi: memfilter soal per kategori BUMN, jenis tes, dan
+	// keluarga jabatan (mis. soal TKB untuk sektor jasa keuangan).
+	SectorKey      string
+	TestType       string
+	PositionFamily string
+	// VariantGroup memfilter soal yang tergabung dalam satu grup varian.
+	VariantGroup string
 }
 
 // ListQuestions mengambil daftar soal dengan paginasi (khusus admin).
@@ -143,6 +150,18 @@ func (r *TryoutRepository) ListQuestions(ctx context.Context, filter QuestionFil
 	}
 	if filter.Difficulty != "" {
 		query = query.Where("difficulty = ?", filter.Difficulty)
+	}
+	if filter.SectorKey != "" {
+		query = query.Where("sector_key = ?", filter.SectorKey)
+	}
+	if filter.TestType != "" {
+		query = query.Where("test_type = ?", filter.TestType)
+	}
+	if filter.PositionFamily != "" {
+		query = query.Where("position_family = ?", filter.PositionFamily)
+	}
+	if filter.VariantGroup != "" {
+		query = query.Where("variant_group = ?", filter.VariantGroup)
 	}
 	if filter.ActiveOnly {
 		query = query.Where("active = ?", true)
@@ -180,6 +199,21 @@ func (r *TryoutRepository) FindQuestion(ctx context.Context, id string) (*models
 	return &question, nil
 }
 
+// ListQuestionsByIDs mengambil banyak soal sekaligus (dipakai panel izin &
+// kepatuhan untuk melengkapi metadata soal tanpa query per baris).
+func (r *TryoutRepository) ListQuestionsByIDs(ctx context.Context, ids []string) ([]models.Question, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	var out []models.Question
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&out).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal memuat soal.")
+	}
+	return out, nil
+}
+
 // QuestionsByBanks mengambil seluruh soal aktif sebuah tryout dari sekumpulan
 // bank, terurut mengikuti urutan bank pada subtes.
 //
@@ -207,6 +241,10 @@ func (r *TryoutRepository) QuestionsByBanks(ctx context.Context, tryoutID string
 // Dipakai daftar & detail tryout untuk menampilkan jumlah soal tiap subtes
 // tanpa query per paket. Soal yang belum ditautkan ke tryout (tryout_id NULL)
 // tidak ikut dihitung karena tidak dipakai sesi mana pun.
+//
+// Soal dalam satu grup varian (`variant_group`) dihitung sekali: sesi tryout
+// hanya memakai satu soal per grup, jadi angka pada kartu tryout tetap sama
+// dengan jumlah soal yang benar-benar dikerjakan peserta.
 func (r *TryoutRepository) CountQuestionsByTryout(ctx context.Context) (map[string]map[string]int, error) {
 	type row struct {
 		TryoutID string
@@ -214,9 +252,12 @@ func (r *TryoutRepository) CountQuestionsByTryout(ctx context.Context) (map[stri
 		Total    int
 	}
 	var rows []row
-	err := r.db.WithContext(ctx).Model(&models.Question{}).
-		Select("tryout_id, bank_key, count(*) AS total").
+	err := r.db.WithContext(ctx).Table("(?) AS soal_unik", r.db.WithContext(ctx).
+		Model(&models.Question{}).
+		Select("DISTINCT ON (tryout_id, bank_key, COALESCE(variant_group, id)) tryout_id, bank_key").
 		Where("active = ? AND tryout_id IS NOT NULL", true).
+		Order("tryout_id, bank_key, COALESCE(variant_group, id), position, id")).
+		Select("tryout_id, bank_key, count(*) AS total").
 		Group("tryout_id, bank_key").
 		Scan(&rows).Error
 	if err != nil {
@@ -273,8 +314,10 @@ func (r *TryoutRepository) BulkUpsertQuestions(ctx context.Context, questions []
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
-				"bank_key", "text", "options", "answer_index", "explanation",
-				"difficulty", "position", "active", "updated_at",
+				"bank_key", "tryout_id", "text", "options", "answer_index",
+				"explanation", "difficulty", "position", "active",
+				"sector_key", "company_key", "test_type", "position_family",
+				"variant_group", "retention_until", "updated_at",
 			}),
 		}).
 		CreateInBatches(questions, 200).Error

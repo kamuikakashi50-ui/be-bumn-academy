@@ -8,6 +8,7 @@ import (
 
 	"github.com/bumn-academy/be-bumn-academy/internal/config"
 	"github.com/bumn-academy/be-bumn-academy/internal/models"
+	"github.com/bumn-academy/be-bumn-academy/internal/pkg/bank"
 	"github.com/bumn-academy/be-bumn-academy/internal/pkg/password"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -67,7 +68,18 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err := seedQuestions(ctx, db, data.Questions, data.Tryouts); err != nil {
 		return err
 	}
+	// Izin soal dibuat setelah soal tersedia: seluruh soal demo dianggap milik
+	// sendiri sehingga tryout demo tetap bisa dikerjakan walau penegakan izin
+	// (QUESTION_LICENSE_ENFORCE) menyala — perilaku bawaan produksi.
+	if err := seedQuestionLicenses(ctx, db); err != nil {
+		return err
+	}
 	if err := seedClassroom(ctx, db, classroom); err != nil {
+		return err
+	}
+	// Jalur belajar & kuis demo dibuat setelah modul/pelajaran dan izin soal
+	// tersedia, karena keduanya menjadi rujukan langkah jalur dan susunan kuis.
+	if err := seedLearningPaths(ctx, db, data); err != nil {
 		return err
 	}
 	if err := seedLiveSessions(ctx, db); err != nil {
@@ -261,7 +273,8 @@ func seedQuestions(ctx context.Context, db *gorm.DB, defs []QuestionDef, tryouts
 			Columns: []clause.Column{{Name: "id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
 				"bank_key", "tryout_id", "text", "options", "answer_index",
-				"explanation", "difficulty", "position", "active", "updated_at",
+				"explanation", "difficulty", "position", "active",
+				"sector_key", "test_type", "position_family", "updated_at",
 			}),
 		}).CreateInBatches(questions, 50).Error; err != nil {
 			return err
@@ -282,19 +295,47 @@ func seedQuestions(ctx context.Context, db *gorm.DB, defs []QuestionDef, tryouts
 }
 
 // newSeedQuestion membentuk model soal dari definisi data.json.
+//
+// Dimensi taksonomi diisi eksplisit: jenis tes diturunkan dari kategori bank
+// (mengikuti `bank.TestTypeForBank`), sedangkan sektor & keluarga jabatan memakai
+// nilai lintas klaster karena soal demo memang generik.
 func newSeedQuestion(def QuestionDef, id string, tryoutID *string) models.Question {
 	return models.Question{
-		ID:          id,
-		BankKey:     def.BankKey,
-		TryoutID:    tryoutID,
-		Text:        def.Text,
-		Options:     models.StringList(def.Options),
-		AnswerIndex: def.AnswerIndex,
-		Explanation: def.Explanation,
-		Difficulty:  models.Difficulty(def.Difficulty),
-		Position:    def.Position,
-		Active:      true,
+		ID:             id,
+		BankKey:        def.BankKey,
+		TryoutID:       tryoutID,
+		SectorKey:      bank.DefaultSector,
+		TestType:       bank.TestTypeForBank(def.BankKey),
+		PositionFamily: bank.DefaultPositionFamily,
+		Text:           def.Text,
+		Options:        models.StringList(def.Options),
+		AnswerIndex:    def.AnswerIndex,
+		Explanation:    def.Explanation,
+		Difficulty:     models.Difficulty(def.Difficulty),
+		Position:       def.Position,
+		Active:         true,
 	}
+}
+
+// seedQuestionLicenses memastikan setiap soal demo punya izin aktif.
+//
+// Tanpa langkah ini, penegakan izin (bawaan: menyala) akan menyaring seluruh soal
+// demo sehingga tryout tidak bisa dimulai. Soal yang sudah punya izin tidak
+// diubah, sehingga izin yang sudah ditinjau manusia tetap utuh.
+func seedQuestionLicenses(ctx context.Context, db *gorm.DB) error {
+	err := db.WithContext(ctx).Exec(`
+		INSERT INTO question_licenses (question_id, scope, owner, notes, commercial_use, status)
+		SELECT q.id, 'internal', 'BUMN Academy',
+		       'Izin bawaan data demo (seed).', TRUE, 'aktif'
+		  FROM questions q
+		 WHERE NOT EXISTS (
+		       SELECT 1 FROM question_licenses l WHERE l.question_id = q.id
+		 )
+		ON CONFLICT DO NOTHING`).Error
+	if err != nil {
+		return fmt.Errorf("seed: gagal menyiapkan izin soal demo: %w", err)
+	}
+	return nil
 }
 
 // seedTryouts menyisipkan/memperbarui paket tryout beserta subtesnya.

@@ -18,6 +18,11 @@ mengerjakan tryout serentak**.
 | Import soal | Excel (.xlsx, excelize) & CSV |
 | Observabilitas | `log/slog` terstruktur, `/healthz`, `/readyz` |
 
+> **Dokumen perencanaan produk** (di luar repo ini) ada di `../docs/`:
+> `tindak-lanjut-pitching.md` (rencana seluruh masukan klien, termasuk status
+> Fase 0) dan spesifikasi per fase — `fase-1-elearning-kelas-khusus.md`,
+> `fase-2-kpi-kelulusan-bumn.md`, `fase-3-talent-mapping-psikolog.md`.
+
 ---
 
 ## 1. Menjalankan
@@ -134,6 +139,10 @@ bisa dijalankan dengan `migrate` CLI bila tim memakai tooling tersebut.
 | 009 | kolom Midtrans pada orders (payment_provider/status/snap_token/redirect) |
 | 010 | course_modules, lessons, lesson_progress (ruang kelas digital) |
 | 011 | `questions.tryout_id` — bank soal dikelompokkan per paket tryout (backfill menggandakan soal yang dipakai beberapa tryout) |
+| 012 | taksonomi soal: `sector_key`/`company_key`/`test_type`/`position_family`, `variant_group`, `retention_until` |
+| 013 | `question_licenses` — izin/hak pakai soal (scope, pemilik, masa berlaku, penggunaan komersial) |
+| 014 | keunikan soal: `questions.fingerprint` + `question_access_logs` |
+| 015 | `learning_paths`, `learning_path_steps`, `lesson_quizzes`, `lesson_quiz_questions`, `quiz_attempts`, `certificates`, `certificate_counters` (+ `course_modules.sector_key`/`test_type`, `lessons.is_preview`) |
 
 Data demo di-embed dari `internal/seed/data.json` yang dihasilkan dari modul mock
 front-end (45 soal, 5 paket tryout, 4 produk, 4 program, 3 voucher, 6 rekaman),
@@ -153,6 +162,13 @@ kata sandi `peserta123` (mis. `dewi.lestari@bumnacademy.id`). Akun inti
 `peserta@bumnacademy.id` **sengaja tidak** diberi percobaan/progres agar skrip
 verifikasi (`smoke-test.sh`, `verify-integration.sh`) tetap berlaku.
 
+`internal/seed/learning_path.go` menambahkan **jalur belajar & kuis demo** (Fase 1):
+satu jalur `jalur-tkd-dasar` pada produk `kelas-intensif` berisi tiga modul (dua
+wajib, satu opsional) dan satu kuis `Kuis Deret & Pola` pada pelajaran
+`les-numerik-deret` (3 soal bank `numerik`, ambang lulus 70, maksimum 3 percobaan).
+Soal kuis dipilih dari `data.json` (bukan id yang ditulis tangan) supaya tetap
+stabil bila penamaan id soal berubah.
+
 ### Isi paket `internal/seed`
 
 | Berkas | Isi |
@@ -160,6 +176,7 @@ verifikasi (`smoke-test.sh`, `verify-integration.sh`) tetap berlaku.
 | `seed.go` | orkestrasi `seed.Run(ctx, db, cfg)` + upsert seluruh katalog memakai UUID deterministik (`uuid.NewSHA1`) agar seed berulang tidak membuat baris baru |
 | `data.go` | struktur JSON + `//go:embed data.json classroom.json` |
 | `learning.go` | jadwal kelas live (disimpan sebagai selisih jam dari waktu seed) & 6 rekaman kelas |
+| `learning_path.go` | jalur belajar & kuis demo Fase 1 (langkah jalur + susunan soal kuis) |
 | `hr.go` | kohort demo analitik HR: akun peserta lintas segmen, riwayat percobaan tryout (dengan rincian subtes), akses produk, dan progres ruang kelas |
 | `data.json` | program, kategori materi, produk, metode bayar, voucher, 45 definisi soal (digandakan per tryout saat disisipkan), 5 paket tryout, akun demo, enrollment demo |
 | `classroom.json` | 8 modul & 15 materi (6 video dari `media/lessons/` + 9 e-book yang dirender jadi PDF saat dibuka) |
@@ -194,6 +211,74 @@ Sejak migrasi `000011_question_tryout`, satu soal **dimiliki satu paket tryout**
 Konsekuensi praktis: mengubah teks soal berarti mengubahnya **per tryout**
 (salinan tidak ikut berubah otomatis), dan `GET /admin/questions` menerima filter
 `?tryoutId=` untuk menampilkan soal satu paket.
+
+### Taksonomi soal, izin, dan keunikan (migrasi 012–014)
+
+Masukan klien saat pitching melahirkan tiga kemampuan baru pada bank soal:
+
+| Migrasi | Isi |
+| --- | --- |
+| `000012_question_taxonomy` | `questions.sector_key` (klaster BUMN), `company_key`, `test_type` (jenis tes), `position_family`, `variant_group`, `retention_until` + backfill `test_type` dari kategori bank |
+| `000013_question_license` | tabel `question_licenses` (izin/hak pakai soal) & `psychological_instruments`; backfill izin `internal` untuk seluruh soal lama |
+| `000014_question_uniqueness` | tabel `question_fingerprints` (sidik jari teks) & `question_access_logs` (jejak audit) |
+
+**Kategori BUMN.** Soal ditandai menurut 12 klaster BUMN (mis. `jasa_keuangan`,
+`pertahanan_manufaktur`) dan jenis tesnya mengikuti tahapan Rekrutmen Bersama
+BUMN: `tkd`, `akhlaq`, `twk`, `bing`, `learning_agility`, `tkb`, `psikotes`.
+Daftar pilihan dikirim backend lewat `GET /admin/questions/taxonomy` agar label di
+panel admin tidak pernah berbeda dari sumbernya di `internal/pkg/bank`.
+
+**Izin soal (fail-closed).** Setiap soal wajib punya baris izin berisi cakupan
+(`internal`/`vendor`/`public_domain`/`client_owned`), pemilik hak cipta, nomor
+perjanjian, berkasnya, serta izin pemakaian komersial & asesmen. Bila
+`QUESTION_LICENSE_ENFORCE=true` (bawaan), soal tanpa izin aktif **tidak dikirim
+ke peserta** — `TryoutService.bankQuestions` menyaringnya sebelum sesi disusun,
+sehingga kelalaian melengkapi izin berhenti sebagai soal yang tidak terpakai,
+bukan sebagai pelanggaran perjanjian. Soal lisensi `vendor` wajib mencantumkan
+nomor perjanjian (ditolak di create maupun import). `GET /admin/licenses/summary`
+melaporkan soal yang izinnya belum lengkap dan izin yang akan berakhir ≤ 30 hari.
+
+**Instrumen psikologi.** `psychological_instruments` membedakan psikotes
+`latihan` (boleh dilatihkan peserta) dan `berlisensi` (hanya boleh dijalankan
+psikolog berkompeten). Instrumen berlisensi wajib punya vendor, nomor lisensi,
+dan psikolog penanggung jawab — tanpa itu instrumen tidak bisa dipakai.
+
+**Keunikan soal.** `internal/pkg/fingerprint` menyimpan tiga tingkat sidik jari
+teks: hash ternormalisasi (kembar persis), template hash (sama kecuali angka),
+dan himpunan kata untuk kemiripan Jaccard (ambang 0,75). Dipakai untuk:
+`POST /admin/questions/check-duplicate` sebelum menyimpan, temuan `duplicates`
+pada hasil import, dan laporan `GET /admin/compliance/question-uniqueness`.
+Soal yang sengaja dijadikan varian (`variant_group` yang sama) tidak dianggap
+temuan; sesi tryout hanya memakai **satu soal per grup varian**, dipilih
+deterministik per (tryout, bank, grup) agar seluruh peserta satu paket
+mengerjakan susunan yang sama.
+
+> Catatan data demo: seed menggandakan soal ke setiap tryout yang memakai bank
+> yang sama (konsekuensi migrasi 011). Karena itu laporan keunikan pada data demo
+> menampilkan pasangan `identik` antar-tryout — itu memang temuan yang benar
+> (soal yang sama muncul di dua paket), bukan cacat alat deteksinya.
+
+**Jejak audit.** Setiap soal dibuat/diubah/dihapus/diimpor tercatat di
+`question_access_logs` (pelaku, aksi, waktu), bisa dibaca lewat
+`GET /admin/compliance/access-log`. Ini yang dipakai saat ada dugaan kebocoran
+soal yang terikat perjanjian kerahasiaan.
+
+### Jalur belajar, kuis, & sertifikat (migrasi 015)
+
+Fondasi Fase 1 (e-learning) ada di migrasi `000015_learning_paths`:
+
+| Tabel | Isi |
+| --- | --- |
+| `learning_paths` / `learning_path_steps` | kurikulum berurutan (langkah = modul, wajib/opsional) dengan dimensi taksonomi Fase 0 |
+| `lesson_quizzes` / `lesson_quiz_questions` | kuis per pelajaran; susunan soal adalah **snapshot** pilihan admin (posisi `question_id` menjadi `NULL` bila soalnya dihapus → kuis ditandai perlu ditinjau) |
+| `quiz_attempts` | percobaan peserta (skor, benar, lulus, jawaban) — hanya yang sudah dikumpulkan dihitung terhadap `max_attempts` |
+| `certificates` / `certificate_counters` | sertifikat penyelesaian jalur + penomoran aman per tahun (`SELECT … FOR UPDATE`) |
+
+Catatan model: `quiz_attempts` dan `certificates` **tidak** memakai
+`models.Base` (kolom waktu standar) karena tabelnya memakai kolom waktu domain
+sendiri (`started_at`/`finished_at`, `issued_at`); keduanya memakai
+`models.IDBase`. Uji `internal/repository/learning_path_schema_test.go` menjaga
+kolom model tetap sama dengan migrasi.
 
 ### Akun demo
 
@@ -272,6 +357,47 @@ Aturan progres: posisi dibatasi oleh durasi materi, persentase dihitung ulang di
 server, materi ditandai selesai otomatis pada >= 90% (atau eksplisit), dan status
 selesai bersifat menetap. Semua endpoint kelas memerlukan kepemilikan produk
 (`403` bila belum).
+
+### Jalur belajar & kuis pelajaran (Fase 1)
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| GET | `/learning/paths` | peserta | jalur belajar yang bisa diakses + progres ringkas (hanya jalur yang produknya dimiliki) |
+| GET | `/learning/paths/{slug}` | peserta | detail jalur: langkah, progres per modul, langkah berikutnya, kelayakan sertifikat |
+| GET | `/classroom/lessons/{id}/quiz` | peserta | soal kuis pelajaran (**tanpa** kunci jawaban) + sisa percobaan |
+| POST | `/classroom/lessons/{id}/quiz` | peserta | kumpulkan jawaban → skor, lulus/tidak, pembahasan, sisa percobaan |
+
+Aturan kuis: soal diambil dari bank soal dan hanya soal **berizin aktif** yang
+dipakai (soal tanpa izin tidak dikirim dan kuisnya ditandai perlu ditinjau); kunci
+jawaban baru dibuka setelah kuis dikumpulkan; nilai = benar/jumlah soal × 100 dan
+lulus bila `>= passScore`; `maxAttempts` 0 berarti tanpa batas, dan hanya percobaan
+yang sudah dikumpulkan yang dihitung. Kuis yang dipakai peserta adalah kuis aktif
+**terbaru** pada pelajaran itu.
+
+Progres jalur dihitung dari langkah **wajib** (bila tidak ada langkah wajib, seluruh
+langkah): sebuah langkah selesai bila seluruh pelajaran aktif modulnya sudah selesai.
+
+### Sertifikat & verifikasi publik (Fase 1)
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| GET | `/certificates` | peserta | sertifikat milik peserta (nomor, jalur, status, tautan unduh & verifikasi) |
+| GET | `/certificates/{id}/pdf` | peserta | PDF sertifikat lanskap A4 (`?download=1` memaksa unduhan) |
+| POST | `/learning/paths/{slug}/certificate` | peserta | minta penerbitan sertifikat (idempoten); bila syarat belum lengkap → `422` + rincian |
+| GET | `/verifikasi/{nomor}` | publik | verifikasi sertifikat: nama, jalur, jenis tes/klaster, instansi, tanggal, status |
+
+Syarat terbit: seluruh langkah **wajib** jalur selesai **dan** seluruh kuis aktif pada
+pelajaran modul wajib pernah lulus. Penerbitan otomatis berjalan di dua titik —
+setelah progres materi disimpan dan setelah kuis lulus — serta idempoten (satu
+sertifikat per peserta per jalur) dan atomik (baris peserta dikunci sebelum nomor
+diambil, sehingga nomor `BA-<tahun>-<6 digit>` tidak kembar). Sertifikat yang dicabut
+tidak diterbitkan ulang otomatis. Detail kelayakan (mis. kuis yang belum lulus) bisa
+dilihat pada `certificateEligibility` di detail jalur.
+
+> Catatan operasional: menambahkan kuis pada pelajaran yang sudah menjadi bagian jalur
+> aktif menaikkan syarat sertifikat jalur tersebut (semua kuis wajib lulus).
+
+Tautan verifikasi pada PDF memakai `PUBLIC_BASE_URL` (lihat tabel env).
 
 ### Pembelian
 
@@ -392,9 +518,19 @@ setiap pertanyaan (dibatasi 12 pesan dan disanitasi ulang di server).
 | GET | `/admin/users` | daftar pengguna + aktivitas |
 | GET | `/admin/orders` | semua pesanan (filter status/pencarian) |
 | POST | `/admin/orders/{id}/mark-paid` | tandai lunas manual + beri akses |
-| GET/POST | `/admin/questions` | daftar/tambah soal |
+| GET/POST | `/admin/questions` | daftar/tambah soal (filter `bankKey`, `tryoutId`, `sectorKey`, `testType`, `positionFamily`, `variantGroup`, `difficulty`, `activeOnly`, `search`) |
+| GET | `/admin/questions/taxonomy` | pilihan kategori, sektor BUMN, jenis tes, keluarga jabatan + nilai bawaan |
 | PATCH/DELETE | `/admin/questions/{id}` | ubah/hapus soal |
 | POST | `/admin/questions/import` | import soal dari Excel/CSV (multipart `file`, opsional `tryoutId` tujuan) |
+| POST | `/admin/questions/check-duplicate` | periksa soal kembar sebelum menyimpan (`kind`: `identik`/`keluarga`/`mirip`/`unik`) |
+| POST | `/admin/questions/{id}/variant` | catat penautan soal ke grup varian di jejak audit |
+| GET/POST | `/admin/licenses` | daftar/tambah izin soal |
+| PATCH/DELETE | `/admin/licenses/{id}` | ubah/hapus izin soal |
+| GET | `/admin/licenses/summary` | soal tanpa izin aktif, izin akan berakhir ≤ 30 hari, rekap per cakupan, status penegakan |
+| GET/POST | `/admin/instruments` | daftar/tambah instrumen psikologi |
+| PATCH/DELETE | `/admin/instruments/{id}` | ubah/hapus instrumen psikologi |
+| GET | `/admin/compliance/question-uniqueness` | laporan soal kembar per bank (filter `bankKey`, `sectorKey`, `testType`, `tryoutId`) |
+| GET | `/admin/compliance/access-log` | jejak audit bank soal (filter `questionId`, `actorId`, `action`) |
 | POST/PATCH/DELETE | `/admin/tryouts[/{id}]` | CRUD paket tryout + subtes |
 | POST/PATCH/DELETE | `/admin/products[/{slug}]` | CRUD produk |
 | GET/POST | `/admin/vouchers`, PATCH/DELETE `/admin/vouchers/{code}` | CRUD voucher |
@@ -406,6 +542,17 @@ setiap pertanyaan (dibatasi 12 pesan dan disanitasi ulang di server).
 | PATCH/DELETE | `/admin/classroom/modules/{id}` | ubah/hapus modul (cascade materi) |
 | GET/POST | `/admin/classroom/lessons` | daftar & tambah materi (video/e-book) |
 | PATCH/DELETE | `/admin/classroom/lessons/{id}` | ubah/hapus materi |
+| GET/POST | `/admin/learning/paths` | daftar (termasuk nonaktif) & tambah jalur belajar |
+| PATCH/DELETE | `/admin/learning/paths/{id}` | ubah / nonaktifkan jalur (soft delete) |
+| POST | `/admin/learning/paths/{id}/steps` | susun langkah jalur (modul, wajib, urutan) |
+| GET | `/admin/classroom/quizzes?lessonId=` | daftar kuis sebuah pelajaran (termasuk nonaktif) |
+| POST | `/admin/classroom/quizzes` | buat kuis + pilih soal (soal tanpa izin aktif ditolak) |
+| PATCH/DELETE | `/admin/classroom/quizzes/{id}` | ubah / nonaktifkan kuis |
+| GET | `/admin/classroom/quizzes/{id}/attempts` | rekap percobaan peserta pada satu kuis |
+| GET | `/admin/certificates` | rekap sertifikat (filter `search`/`pathId`/`status`) |
+| GET | `/admin/certificates/{id}/pdf` | unduh PDF sertifikat peserta mana pun |
+| DELETE | `/admin/certificates/{id}` | cabut sertifikat |
+| POST | `/admin/certificates/{id}/restore` | pulihkan sertifikat yang salah dicabut |
 
 ### Soft delete (nonaktifkan) produk & paket tryout
 
@@ -956,6 +1103,7 @@ Seluruh variabel ada di `.env.example`. Yang paling sering disesuaikan:
 | `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL` | `24h` / `720h` | masa berlaku token |
 | `RATE_LIMIT_RPS` / `RATE_LIMIT_BURST` | `30` / `60` | batas per pengguna/IP |
 | `PASSING_THRESHOLD` | `70` | ambang batas kelulusan simulasi |
+| `QUESTION_LICENSE_ENFORCE` | `true` | tegakkan izin soal: soal tanpa izin aktif tidak dikirim ke peserta |
 | `REFERRAL_DISCOUNT_PERCENT` | `10` | diskon kode referral |
 | `MIDTRANS_SERVER_KEY` | — | Server Key Midtrans (kosong = simulator sandbox lokal) |
 | `MIDTRANS_CLIENT_KEY` | — | Client Key Midtrans (dipakai snap.js di browser) |
@@ -965,6 +1113,7 @@ Seluruh variabel ada di `.env.example`. Yang paling sering disesuaikan:
 | `MIDTRANS_SNAP_BASE_URL` / `MIDTRANS_CORE_BASE_URL` | — | override domain Midtrans (pengujian/proxy) |
 | `FRONTEND_BASE_URL` | `http://localhost:3000` | basis URL pengalihan Snap |
 | `MEDIA_DIR` | `./media` | direktori berkas media ruang kelas (`/app/media` di Docker) |
+| `PUBLIC_BASE_URL` | `https://bumnacademy.id` | alamat situs publik untuk tautan verifikasi sertifikat pada PDF |
 | `SEED_ON_START` | `true` | matikan di produksi |
 | `AI_PROVIDER` | `stub` | `stub` (lokal), `ark`, atau `openai` |
 | `AI_BASE_URL` | Ark ap-southeast-1 | endpoint kompatibel OpenAI |

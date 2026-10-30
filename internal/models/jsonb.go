@@ -108,6 +108,42 @@ func (t *TimeList) Scan(src any) error {
 	return nil
 }
 
+// JSONMap adalah kolom JSONB generik berisi objek (bukan array).
+//
+// Dipakai untuk metadata yang isinya fleksibel tanpa skema tetap, mis. metadata
+// sertifikat (nama peserta, instansi, periode).
+type JSONMap map[string]any
+
+// Value mengubah JSONMap menjadi JSON untuk disimpan.
+func (m JSONMap) Value() (driver.Value, error) {
+	if m == nil {
+		return []byte("{}"), nil
+	}
+	b, err := json.Marshal(map[string]any(m))
+	if err != nil {
+		return nil, fmt.Errorf("models: gagal marshal JSONMap: %w", err)
+	}
+	return b, nil
+}
+
+// Scan membaca nilai JSONB dari database.
+func (m *JSONMap) Scan(src any) error {
+	raw, err := toBytes(src)
+	if err != nil {
+		return err
+	}
+	if len(raw) == 0 {
+		*m = JSONMap{}
+		return nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return fmt.Errorf("models: gagal unmarshal JSONMap: %w", err)
+	}
+	*m = out
+	return nil
+}
+
 func toBytes(src any) ([]byte, error) {
 	switch v := src.(type) {
 	case nil:

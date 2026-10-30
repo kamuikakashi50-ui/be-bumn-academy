@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"hash/fnv"
 	"math"
 	"strconv"
 	"time"
@@ -21,8 +22,11 @@ type TryoutService struct {
 	sessions    *repository.SessionRepository
 	attempts    *repository.AttemptRepository
 	enrollments *repository.EnrollmentRepository
-	cache       *cache.Cache
-	cfg         *config.Config
+	// licenses dipakai menegakkan izin soal: soal tanpa izin aktif tidak
+	// dikirim ke peserta (lihat `bankQuestions`).
+	licenses *repository.LicenseRepository
+	cache    *cache.Cache
+	cfg      *config.Config
 }
 
 // NewTryoutService membentuk service tryout.
@@ -31,6 +35,7 @@ func NewTryoutService(
 	sessions *repository.SessionRepository,
 	attempts *repository.AttemptRepository,
 	enrollments *repository.EnrollmentRepository,
+	licenses *repository.LicenseRepository,
 	cacheLayer *cache.Cache,
 	cfg *config.Config,
 ) *TryoutService {
@@ -39,6 +44,7 @@ func NewTryoutService(
 		sessions:    sessions,
 		attempts:    attempts,
 		enrollments: enrollments,
+		licenses:    licenses,
 		cache:       cacheLayer,
 		cfg:         cfg,
 	}
@@ -49,11 +55,107 @@ func NewTryoutService(
 // Bank soal jarang berubah tetapi dibaca setiap kali peserta memulai sesi, jadi
 // ini titik caching paling berdampak saat tryout serentak. Kunci cache memuat
 // `tryoutID` karena soal sekarang dimiliki per paket tryout.
+//
+// Dua penyaringan diterapkan sebelum soal dipakai sesi:
+//
+//  1. Izin soal (bila `QUESTION_LICENSE_ENFORCE` menyala) — soal tanpa izin aktif
+//     tidak dikirim ke peserta. Ini penegakan "harus dipastikan izinnya".
+//  2. Grup varian — dari beberapa soal sekeluarga (mis. angka berbeda) hanya satu
+//     yang dipakai, dipilih secara deterministik per (tryout, bank, grup) agar
+//     seluruh peserta satu paket mengerjakan susunan yang sama.
 func (s *TryoutService) bankQuestions(ctx context.Context, tryoutID, bankKey string) ([]models.Question, error) {
 	return cache.Remember(ctx, s.cache, cache.KeyQuestionBank(tryoutID, bankKey), s.cfg.Redis.QuestionBankTTL,
 		func(ctx context.Context) ([]models.Question, error) {
-			return s.tryouts.QuestionsByBanks(ctx, tryoutID, []string{bankKey})
+			questions, err := s.tryouts.QuestionsByBanks(ctx, tryoutID, []string{bankKey})
+			if err != nil {
+				return nil, err
+			}
+			if s.cfg.Business.QuestionLicenseEnforce {
+				questions, err = s.onlyLicensed(ctx, questions)
+				if err != nil {
+					return nil, err
+				}
+			}
+			return pickVariants(tryoutID, bankKey, questions), nil
 		})
+}
+
+// onlyLicensed menyaring soal yang izinnya masih berlaku.
+//
+// Soal tanpa baris izin ikut dibuang (fail-closed): lebih baik satu soal tidak
+// terpakai daripada soal tanpa dasar hak pakai dipakai pada produk berbayar.
+func (s *TryoutService) onlyLicensed(ctx context.Context, questions []models.Question) ([]models.Question, error) {
+	if len(questions) == 0 || s.licenses == nil {
+		return questions, nil
+	}
+
+	ids := make([]string, 0, len(questions))
+	for _, question := range questions {
+		ids = append(ids, question.ID)
+	}
+
+	usable, err := s.licenses.UsableQuestionIDs(ctx, ids, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]models.Question, 0, len(questions))
+	for _, question := range questions {
+		if _, ok := usable[question.ID]; ok {
+			out = append(out, question)
+		}
+	}
+	return out, nil
+}
+
+// pickVariants memilih satu soal per grup varian.
+//
+// Soal tanpa grup varian selalu ikut. Pemilihan bersifat deterministik
+// (hash dari tryout+bank+grup) sehingga susunan soal satu paket tetap sama untuk
+// semua peserta — penting agar penilaian dan papan peringkat tetap adil.
+func pickVariants(tryoutID, bankKey string, questions []models.Question) []models.Question {
+	hasGroup := false
+	for _, question := range questions {
+		if question.VariantGroup != nil && *question.VariantGroup != "" {
+			hasGroup = true
+			break
+		}
+	}
+	if !hasGroup {
+		return questions
+	}
+
+	grouped := map[string][]models.Question{}
+	order := make([]string, 0, len(questions))
+	out := make([]models.Question, 0, len(questions))
+	for _, question := range questions {
+		if question.VariantGroup == nil || *question.VariantGroup == "" {
+			out = append(out, question)
+			continue
+		}
+		group := *question.VariantGroup
+		if _, ok := grouped[group]; !ok {
+			order = append(order, group)
+		}
+		grouped[group] = append(grouped[group], question)
+	}
+
+	for _, group := range order {
+		members := grouped[group]
+		index := stableVariantIndex(tryoutID, bankKey, group, len(members))
+		out = append(out, members[index])
+	}
+	return out
+}
+
+// stableVariantIndex memilih indeks varian yang stabil untuk kombinasi kunci.
+func stableVariantIndex(tryoutID, bankKey, group string, size int) int {
+	if size <= 1 {
+		return 0
+	}
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(tryoutID + "\x00" + bankKey + "\x00" + group))
+	return int(hash.Sum32() % uint32(size))
 }
 
 // bankCounts mengembalikan jumlah soal per (tryout, bank).
@@ -271,7 +373,11 @@ func (s *TryoutService) StartSession(ctx context.Context, userID, tryoutID strin
 	for i, subtest := range pkg.Subtests {
 		totalMinutes += subtest.Minutes
 		if len(order[i]) == 0 {
-			return nil, apperror.BadRequest("Subtes " + subtest.Name + " belum memiliki soal. Hubungi tim akademik.")
+			message := "Subtes " + subtest.Name + " belum memiliki soal. Hubungi tim akademik."
+			if s.cfg.Business.QuestionLicenseEnforce {
+				message += " Periksa juga izin soal: soal tanpa izin aktif tidak dikirim ke peserta."
+			}
+			return nil, apperror.BadRequest(message)
 		}
 	}
 

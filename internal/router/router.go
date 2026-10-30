@@ -25,33 +25,43 @@ type Options struct {
 	Manager *auth.Manager
 	Version string
 
-	AuthService      *service.AuthService
-	CatalogService   *service.CatalogService
-	BillingService   *service.BillingService
-	TryoutService    *service.TryoutService
-	LearningService  *service.LearningService
-	ClassroomService *service.ClassroomService
-	CorporateService *service.CorporateService
-	AdminService     *service.AdminService
-	HRService        *service.HRService
-	HRChatService    *service.HRChatService
-	MentorService    *service.MentorService
+	AuthService       *service.AuthService
+	CatalogService    *service.CatalogService
+	BillingService    *service.BillingService
+	TryoutService     *service.TryoutService
+	LearningService   *service.LearningService
+	ClassroomService  *service.ClassroomService
+	CorporateService  *service.CorporateService
+	AdminService      *service.AdminService
+	HRService         *service.HRService
+	HRChatService     *service.HRChatService
+	MentorService     *service.MentorService
+	LicenseService    *service.LicenseService
+	ComplianceService *service.ComplianceService
+	// LearningPathService melayani jalur belajar & kuis per pelajaran.
+	LearningPathService *service.LearningPathService
+	// CertificateService melayani sertifikat jalur belajar & verifikasi publik.
+	CertificateService *service.CertificateService
 }
 
 // New menyusun router utama aplikasi.
 func New(opts Options) http.Handler {
 	deps := &handler.Deps{
-		Auth:      opts.AuthService,
-		Catalog:   opts.CatalogService,
-		Billing:   opts.BillingService,
-		Tryout:    opts.TryoutService,
-		Learning:  opts.LearningService,
-		Classroom: opts.ClassroomService,
-		Corporate: opts.CorporateService,
-		Admin:     opts.AdminService,
-		HR:        opts.HRService,
-		HRChat:    opts.HRChatService,
-		Mentor:    opts.MentorService,
+		Auth:         opts.AuthService,
+		Catalog:      opts.CatalogService,
+		Billing:      opts.BillingService,
+		Tryout:       opts.TryoutService,
+		Learning:     opts.LearningService,
+		Classroom:    opts.ClassroomService,
+		Corporate:    opts.CorporateService,
+		Admin:        opts.AdminService,
+		HR:           opts.HRService,
+		HRChat:       opts.HRChatService,
+		Mentor:       opts.MentorService,
+		License:      opts.LicenseService,
+		Compliance:   opts.ComplianceService,
+		LearningPath: opts.LearningPathService,
+		Certificate:  opts.CertificateService,
 	}
 
 	authHandler := handler.NewAuthHandler(deps)
@@ -64,6 +74,9 @@ func New(opts Options) http.Handler {
 	adminHandler := handler.NewAdminHandler(deps)
 	hrHandler := handler.NewHRHandler(deps)
 	aiHandler := handler.NewAIHandler(deps)
+	licenseHandler := handler.NewLicenseHandler(deps)
+	learningPathHandler := handler.NewLearningPathHandler(deps)
+	certificateHandler := handler.NewCertificateHandler(deps)
 	healthHandler := handler.NewHealthHandler(opts.DB, opts.Cache, opts.Version)
 	mediaHandler := handler.NewMediaHandler(opts.Config.App.MediaDir)
 
@@ -106,6 +119,9 @@ func New(opts Options) http.Handler {
 			admin:     adminHandler,
 			hr:        hrHandler,
 			ai:        aiHandler,
+			license:   licenseHandler,
+			path:      learningPathHandler,
+			cert:      certificateHandler,
 			authMid:   authMiddleware,
 		})
 	})
@@ -134,6 +150,9 @@ type routeHandlers struct {
 	admin     *handler.AdminHandler
 	hr        *handler.HRHandler
 	ai        *handler.AIHandler
+	license   *handler.LicenseHandler
+	path      *handler.LearningPathHandler
+	cert      *handler.CertificateHandler
 	authMid   *middleware.Auth
 }
 
@@ -172,6 +191,10 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Get("/tryouts/{id}/leaderboard", h.tryout.Leaderboard)
 	})
 
+	// Verifikasi sertifikat publik (tanpa login): siapa pun yang memegang nomor
+	// sertifikat bisa memeriksa keasliannya.
+	r.Get("/verifikasi/{nomor}", h.cert.Verify)
+
 	// Webhook pembayaran (dipanggil server Midtrans, tanpa JWT).
 	r.Post("/webhooks/midtrans", h.billing.MidtransWebhook)
 
@@ -207,6 +230,17 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Get("/classroom/lessons/{id}", h.classroom.Lesson)
 		r.Post("/classroom/lessons/{id}/progress", h.classroom.SaveProgress)
 		r.Get("/classroom/lessons/{id}/ebook", h.classroom.Ebook)
+
+		// Sertifikat peserta (Fase 1).
+		r.Get("/certificates", h.cert.List)
+		r.Get("/certificates/{id}/pdf", h.cert.PDF)
+		r.Post("/learning/paths/{slug}/certificate", h.cert.Issue)
+
+		// Jalur belajar & kuis per pelajaran (Fase 1).
+		r.Get("/learning/paths", h.path.Paths)
+		r.Get("/learning/paths/{slug}", h.path.Path)
+		r.Get("/classroom/lessons/{id}/quiz", h.path.LessonQuiz)
+		r.Post("/classroom/lessons/{id}/quiz", h.path.SubmitQuiz)
 
 		// Mesin tryout.
 		r.Post("/tryouts/{id}/sessions", h.tryout.StartSession)
@@ -260,10 +294,29 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Post("/orders/{id}/mark-paid", h.admin.MarkOrderPaid)
 
 		r.Get("/questions", h.admin.ListQuestions)
+		r.Get("/questions/taxonomy", h.admin.Taxonomy)
 		r.Post("/questions", h.admin.CreateQuestion)
 		r.Post("/questions/import", h.admin.ImportQuestions)
+		r.Post("/questions/check-duplicate", h.license.CheckDuplicate)
 		r.Patch("/questions/{id}", h.admin.UpdateQuestion)
 		r.Delete("/questions/{id}", h.admin.DeleteQuestion)
+		r.Post("/questions/{id}/variant", h.license.RecordVariant)
+
+		// Izin/hak pakai soal & instrumen tes psikologi.
+		r.Get("/licenses", h.license.List)
+		r.Get("/licenses/summary", h.license.Summary)
+		r.Post("/licenses", h.license.Create)
+		r.Patch("/licenses/{id}", h.license.Update)
+		r.Delete("/licenses/{id}", h.license.Delete)
+
+		r.Get("/instruments", h.license.ListInstruments)
+		r.Post("/instruments", h.license.CreateInstrument)
+		r.Patch("/instruments/{id}", h.license.UpdateInstrument)
+		r.Delete("/instruments/{id}", h.license.DeleteInstrument)
+
+		// Kepatuhan bank soal: soal kembar & jejak audit.
+		r.Get("/compliance/question-uniqueness", h.license.UniquenessReport)
+		r.Get("/compliance/access-log", h.license.AccessLog)
 
 		r.Get("/tryouts", h.admin.ListTryouts)
 		r.Post("/tryouts", h.admin.CreateTryout)
@@ -292,5 +345,24 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Post("/classroom/lessons", h.classroom.CreateLesson)
 		r.Patch("/classroom/lessons/{id}", h.classroom.UpdateLesson)
 		r.Delete("/classroom/lessons/{id}", h.classroom.DeleteLesson)
+
+		// Jalur belajar & kuis per pelajaran (Fase 1).
+		r.Get("/learning/paths", h.path.AdminPaths)
+		r.Post("/learning/paths", h.path.CreatePath)
+		r.Get("/learning/paths/{id}", h.path.AdminPath)
+		r.Patch("/learning/paths/{id}", h.path.UpdatePath)
+		r.Delete("/learning/paths/{id}", h.path.DeletePath)
+		r.Post("/learning/paths/{id}/steps", h.path.SetPathSteps)
+		r.Get("/classroom/quizzes", h.path.AdminQuizzes)
+		r.Post("/classroom/quizzes", h.path.CreateQuiz)
+		r.Patch("/classroom/quizzes/{id}", h.path.UpdateQuiz)
+		r.Delete("/classroom/quizzes/{id}", h.path.DeleteQuiz)
+		r.Get("/classroom/quizzes/{id}/attempts", h.path.QuizAttempts)
+
+		// Sertifikat (Fase 1): rekap, unduh, cabut, dan pulihkan.
+		r.Get("/certificates", h.cert.AdminList)
+		r.Get("/certificates/{id}/pdf", h.cert.AdminPDF)
+		r.Delete("/certificates/{id}", h.cert.Revoke)
+		r.Post("/certificates/{id}/restore", h.cert.Restore)
 	})
 }

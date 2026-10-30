@@ -26,6 +26,25 @@ type Base struct {
 	Timestamps
 }
 
+// IDBase adalah primary key UUID tanpa kolom waktu standar.
+//
+// Dipakai tabel yang waktu hidupnya diwakili kolom domain sendiri
+// (mis. `quiz_attempts.started_at` / `finished_at`, `certificates.issued_at`),
+// sehingga tidak punya `created_at`/`updated_at`. Memakai `Base` pada tabel
+// seperti itu membuat INSERT gagal karena GORM ikut mengirim kolom yang tidak ada.
+type IDBase struct {
+	ID string `gorm:"column:id;type:uuid;primaryKey" json:"id"`
+}
+
+// BeforeCreate memastikan ID terisi sebelum INSERT (tanpa bergantung pada
+// default database, sehingga nilai balik Create selalu berisi ID).
+func (b *IDBase) BeforeCreate(*gorm.DB) error {
+	if b.ID == "" {
+		b.ID = uuid.NewString()
+	}
+	return nil
+}
+
 // BeforeCreate memastikan ID terisi sebelum INSERT (tanpa bergantung pada
 // default database, sehingga nilai balik Create selalu berisi ID).
 func (b *Base) BeforeCreate(*gorm.DB) error {

@@ -37,6 +37,10 @@ func buildRouter(
 	classroomRepo := repository.NewClassroomRepository(db)
 	aiRepo := repository.NewAIRepository(db)
 
+	licenses := repository.NewLicenseRepository(db)
+	fingerprints := repository.NewComplianceRepository(db)
+	learningPaths := repository.NewLearningPathRepository(db)
+
 	// Service.
 	authService := service.NewAuthService(users, manager, cfg)
 	catalogService := service.NewCatalogService(catalog, enrollments, cacheLayer, cfg)
@@ -54,13 +58,28 @@ func buildRouter(
 	logger.Info("integrasi pembayaran disiapkan", "provider", midtransClient.Describe())
 
 	billingService := service.NewBillingService(catalog, orders, enrollments, users, learning, midtransClient, cfg)
-	tryoutService := service.NewTryoutService(tryouts, sessions, attempts, enrollments, cacheLayer, cfg)
+	tryoutService := service.NewTryoutService(tryouts, sessions, attempts, enrollments, licenses, cacheLayer, cfg)
 	classroomService := service.NewClassroomService(classroomRepo, enrollments, catalog, cfg)
 	corporateService := service.NewCorporateService(attempts, users, cacheLayer, cfg)
 	learningService := service.NewLearningService(learning, attempts, enrollments, tryoutService, classroomService, cacheLayer, cfg)
+	complianceService := service.NewComplianceService(fingerprints, tryouts, cfg, logger)
+	licenseService := service.NewLicenseService(licenses, tryouts, tryoutService, cfg, logger)
+	// Pemeriksa akses materi dipakai jalur belajar & kuis; ClassroomService masih
+	// memakai pemeriksaan miliknya sampai langkah konsolidasi berikutnya.
+	accessChecker := service.NewAccessChecker(enrollments)
+	learningPathService := service.NewLearningPathService(
+		learningPaths, classroomRepo, catalog, tryouts, licenses, accessChecker, cfg,
+	)
+	certificateService := service.NewCertificateService(
+		learningPaths, classroomRepo, users, accessChecker, cfg,
+	)
+	// Sertifikat diterbitkan otomatis saat peserta menyelesaikan langkah wajib
+	// (progres materi) atau lulus kuis jalur — dua titik, satu aturan.
+	learningPathService.SetCertificateIssuer(certificateService)
+	classroomService.SetCertificateIssuer(certificateService)
 	adminService := service.NewAdminService(
 		users, orders, enrollments, catalog, tryouts, attempts, learning,
-		catalogService, tryoutService, cfg,
+		catalogService, tryoutService, licenseService, complianceService, cfg,
 	)
 	hrService := service.NewHRService(users, attempts, classroomRepo, cfg)
 
@@ -75,22 +94,26 @@ func buildRouter(
 	hrChatService := service.NewHRChatService(hrService, aiRepo, provider, cfg, logger)
 
 	return router.New(router.Options{
-		Config:           cfg,
-		DB:               db,
-		Cache:            cacheClient,
-		Limiter:          limiter,
-		Manager:          manager,
-		Version:          version,
-		AuthService:      authService,
-		CatalogService:   catalogService,
-		BillingService:   billingService,
-		TryoutService:    tryoutService,
-		LearningService:  learningService,
-		ClassroomService: classroomService,
-		CorporateService: corporateService,
-		AdminService:     adminService,
-		HRService:        hrService,
-		HRChatService:    hrChatService,
-		MentorService:    mentorService,
+		Config:              cfg,
+		DB:                  db,
+		Cache:               cacheClient,
+		Limiter:             limiter,
+		Manager:             manager,
+		Version:             version,
+		AuthService:         authService,
+		CatalogService:      catalogService,
+		BillingService:      billingService,
+		TryoutService:       tryoutService,
+		LearningService:     learningService,
+		ClassroomService:    classroomService,
+		CorporateService:    corporateService,
+		AdminService:        adminService,
+		HRService:           hrService,
+		HRChatService:       hrChatService,
+		MentorService:       mentorService,
+		LicenseService:      licenseService,
+		ComplianceService:   complianceService,
+		LearningPathService: learningPathService,
+		CertificateService:  certificateService,
 	})
 }

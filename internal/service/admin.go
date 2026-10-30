@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/bumn-academy/be-bumn-academy/internal/config"
 	"github.com/bumn-academy/be-bumn-academy/internal/dto"
@@ -32,7 +33,10 @@ type AdminService struct {
 	learning    *repository.LearningRepository
 	catalogSvc  *CatalogService
 	tryoutSvc   *TryoutService
-	cfg         *config.Config
+	// licenses & compliance menjaga izin, keunikan, dan jejak audit bank soal.
+	licenses   *LicenseService
+	compliance *ComplianceService
+	cfg        *config.Config
 }
 
 // NewAdminService membentuk service admin.
@@ -46,6 +50,8 @@ func NewAdminService(
 	learning *repository.LearningRepository,
 	catalogSvc *CatalogService,
 	tryoutSvc *TryoutService,
+	licenses *LicenseService,
+	compliance *ComplianceService,
 	cfg *config.Config,
 ) *AdminService {
 	return &AdminService{
@@ -58,6 +64,8 @@ func NewAdminService(
 		learning:    learning,
 		catalogSvc:  catalogSvc,
 		tryoutSvc:   tryoutSvc,
+		licenses:    licenses,
+		compliance:  compliance,
 		cfg:         cfg,
 	}
 }
@@ -281,15 +289,88 @@ func (s *AdminService) ListQuestions(ctx context.Context, filter repository.Ques
 		return nil, 0, err
 	}
 
+	licenses, err := s.licensesByQuestion(ctx, rows)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	out := make([]dto.QuestionView, 0, len(rows))
 	for _, row := range rows {
 		view := toQuestionView(row)
 		if row.TryoutID != nil {
 			view.TryoutTitle = titles[*row.TryoutID]
 		}
+		applyLicenseSummary(&view, licenses[row.ID])
 		out = append(out, view)
 	}
 	return out, total, nil
+}
+
+// licensesByQuestion memuat izin untuk sekumpulan soal (satu query, bukan N+1).
+func (s *AdminService) licensesByQuestion(ctx context.Context, questions []models.Question) (map[string][]models.QuestionLicense, error) {
+	if len(questions) == 0 || s.licenses == nil {
+		return map[string][]models.QuestionLicense{}, nil
+	}
+
+	ids := make([]string, 0, len(questions))
+	for _, question := range questions {
+		ids = append(ids, question.ID)
+	}
+	return s.licenses.LicensesByQuestion(ctx, ids)
+}
+
+// applyLicenseSummary mengisi ringkasan izin pada tampilan soal.
+//
+// Status efektif dihitung dari izin yang paling menguntungkan: soal tetap
+// dianggap berizin selama ada satu izin aktif.
+func applyLicenseSummary(view *dto.QuestionView, licenses []models.QuestionLicense) {
+	view.LicenseCount = len(licenses)
+	if len(licenses) == 0 {
+		view.LicenseStatus = "kosong"
+		return
+	}
+
+	now := time.Now().UTC()
+	best := licenses[0]
+	view.LicenseStatus = string(best.EffectiveStatus(now))
+	for _, license := range licenses {
+		if license.EffectiveStatus(now) == models.LicenseActive {
+			best = license
+			view.LicenseStatus = string(models.LicenseActive)
+			break
+		}
+	}
+
+	view.LicenseScope = string(best.Scope)
+	view.LicenseOwner = best.Owner
+	view.LicenseValidUntil = formatTimePtr(best.ValidUntil)
+}
+
+// Taxonomy mengembalikan daftar pilihan taksonomi bank soal untuk panel admin.
+//
+// Dikirim backend agar label kategori, sektor, jenis tes, dan keluarga jabatan
+// tidak perlu diduplikasi di front-end.
+func (s *AdminService) Taxonomy() *dto.TaxonomyView {
+	return &dto.TaxonomyView{
+		Banks:            toTaxonomyOptions(bank.BankOptions()),
+		Sectors:          toTaxonomyOptions(bank.Sectors),
+		TestTypes:        toTaxonomyOptions(bank.TestTypes),
+		PositionFamilies: toTaxonomyOptions(bank.PositionFamilies),
+		Defaults: dto.TaxonomyDefaults{
+			SectorKey:      bank.DefaultSector,
+			TestType:       bank.DefaultTestType,
+			PositionFamily: bank.DefaultPositionFamily,
+		},
+	}
+}
+
+// toTaxonomyOptions menyalin pilihan taksonomi dari paket bank ke DTO.
+func toTaxonomyOptions(options []bank.Option) []dto.TaxonomyOption {
+	out := make([]dto.TaxonomyOption, 0, len(options))
+	for _, option := range options {
+		out = append(out, dto.TaxonomyOption{Key: option.Key, Label: option.Label})
+	}
+	return out
 }
 
 // tryoutTitles memetakan id paket tryout → judulnya (dipakai panel bank soal
@@ -321,10 +402,80 @@ func (s *AdminService) ensureTryoutExists(ctx context.Context, tryoutID string) 
 	return id, pkg.Title, nil
 }
 
+// validateTaxonomy memeriksa dimensi taksonomi yang dikirim admin.
+//
+// Nilai kosong memakai bawaan (umum/tkd/umum); nilai yang tidak dikenal ditolak
+// agar bank soal tidak terisi sektor atau jenis tes karangan.
+func validateTaxonomy(sectorKey, testType, positionFamily string) (string, string, string, error) {
+	sector, err := validateSector(sectorKey)
+	if err != nil {
+		return "", "", "", err
+	}
+	test, err := validateTestType(testType)
+	if err != nil {
+		return "", "", "", err
+	}
+	family, err := validatePositionFamily(positionFamily)
+	if err != nil {
+		return "", "", "", err
+	}
+	return sector, test, family, nil
+}
+
+// validateSector memeriksa sektor soal.
+func validateSector(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && !bank.IsValidSector(trimmed) {
+		return "", apperror.Validation("Sektor soal tidak dikenal.",
+			map[string]string{"sectorKey": "Pilih sektor dari daftar."})
+	}
+	return bank.SectorOrDefault(trimmed), nil
+}
+
+// validateTestType memeriksa jenis tes soal.
+func validateTestType(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && !bank.IsValidTestType(trimmed) {
+		return "", apperror.Validation("Jenis tes soal tidak dikenal.",
+			map[string]string{"testType": "Pilih jenis tes dari daftar."})
+	}
+	return bank.TestTypeOrDefault(trimmed), nil
+}
+
+// validatePositionFamily memeriksa keluarga jabatan soal.
+func validatePositionFamily(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed != "" && !bank.IsValidPositionFamily(trimmed) {
+		return "", apperror.Validation("Keluarga jabatan tidak dikenal.",
+			map[string]string{"positionFamily": "Pilih keluarga jabatan dari daftar."})
+	}
+	return bank.PositionFamilyOrDefault(trimmed), nil
+}
+
 // CreateQuestion menambahkan satu soal baru.
-func (s *AdminService) CreateQuestion(ctx context.Context, req dto.CreateQuestionRequest) (*dto.QuestionView, error) {
+//
+// `actorID` dipakai mencatat jejak audit bank soal (siapa menyentuh soal apa).
+func (s *AdminService) CreateQuestion(ctx context.Context, actorID string, req dto.CreateQuestionRequest) (*dto.QuestionView, error) {
 	if err := validateQuestion(req.Options, req.AnswerIndex); err != nil {
 		return nil, err
+	}
+
+	sectorKey, testType, positionFamily, err := validateTaxonomy(req.SectorKey, req.TestType, req.PositionFamily)
+	if err != nil {
+		return nil, err
+	}
+
+	retentionUntil, err := parseOptionalTime(req.RetentionUntil)
+	if err != nil {
+		return nil, apperror.Validation("Batas masa simpan soal tidak valid.", nil)
+	}
+
+	// Izin diperiksa lebih dulu supaya soal tidak tersimpan setengah jalan
+	// (mis. soal vendor tanpa nomor perjanjian).
+	if s.licenses != nil {
+		if err := s.licenses.ValidateLicenseInput(req.License); err != nil {
+			return nil, err
+		}
 	}
 
 	tryoutID, tryoutTitle, err := s.ensureTryoutExists(ctx, req.TryoutID)
@@ -338,16 +489,22 @@ func (s *AdminService) CreateQuestion(ctx context.Context, req dto.CreateQuestio
 	}
 
 	question := models.Question{
-		ID:          strings.TrimSpace(req.ID),
-		BankKey:     req.BankKey,
-		TryoutID:    &tryoutID,
-		Text:        req.Text,
-		Options:     models.StringList(req.Options),
-		AnswerIndex: req.AnswerIndex,
-		Explanation: req.Explanation,
-		Difficulty:  difficultyOr(req.Difficulty),
-		Position:    position,
-		Active:      req.Active == nil || *req.Active,
+		ID:             strings.TrimSpace(req.ID),
+		BankKey:        req.BankKey,
+		TryoutID:       &tryoutID,
+		SectorKey:      sectorKey,
+		CompanyKey:     optionalString(req.CompanyKey),
+		TestType:       testType,
+		PositionFamily: positionFamily,
+		VariantGroup:   optionalString(req.VariantGroup),
+		RetentionUntil: retentionUntil,
+		Text:           req.Text,
+		Options:        models.StringList(req.Options),
+		AnswerIndex:    req.AnswerIndex,
+		Explanation:    req.Explanation,
+		Difficulty:     difficultyOr(req.Difficulty),
+		Position:       position,
+		Active:         req.Active == nil || *req.Active,
 	}
 	if question.ID == "" {
 		question.ID = fmt.Sprintf("%s-%s", req.BankKey, shortID())
@@ -356,15 +513,47 @@ func (s *AdminService) CreateQuestion(ctx context.Context, req dto.CreateQuestio
 	if err := s.tryouts.CreateQuestion(ctx, &question); err != nil {
 		return nil, err
 	}
+
+	licenses, err := s.attachLicense(ctx, question, req.License)
+	if err != nil {
+		return nil, err
+	}
+	s.afterQuestionChange(ctx, actorID, question, models.QuestionActionCreate, "Soal dibuat lewat panel admin.")
+
 	s.tryoutSvc.InvalidateBankCache(ctx)
 
 	view := toQuestionView(question)
 	view.TryoutTitle = tryoutTitle
+	applyLicenseSummary(&view, licenses)
 	return &view, nil
 }
 
+// attachLicense menyimpan izin soal baru lalu mengembalikan daftar izinnya.
+func (s *AdminService) attachLicense(ctx context.Context, question models.Question, input *dto.QuestionLicenseInput) ([]models.QuestionLicense, error) {
+	if s.licenses == nil {
+		return nil, nil
+	}
+	if _, err := s.licenses.EnsureForQuestion(ctx, question.ID, input); err != nil {
+		return nil, err
+	}
+	licenses, err := s.licenses.LicensesByQuestion(ctx, []string{question.ID})
+	if err != nil {
+		return nil, err
+	}
+	return licenses[question.ID], nil
+}
+
+// afterQuestionChange memperbarui sidik jari soal dan mencatat jejak auditnya.
+func (s *AdminService) afterQuestionChange(ctx context.Context, actorID string, question models.Question, action, detail string) {
+	if s.compliance != nil {
+		s.compliance.Refresh(ctx, question, actorID, action, detail)
+	}
+}
+
 // UpdateQuestion mengubah sebagian data soal.
-func (s *AdminService) UpdateQuestion(ctx context.Context, id string, req dto.UpdateQuestionRequest) (*dto.QuestionView, error) {
+//
+// `actorID` dipakai mencatat jejak audit bank soal.
+func (s *AdminService) UpdateQuestion(ctx context.Context, actorID, id string, req dto.UpdateQuestionRequest) (*dto.QuestionView, error) {
 	question, err := s.tryouts.FindQuestion(ctx, id)
 	if err != nil {
 		return nil, err
@@ -379,6 +568,40 @@ func (s *AdminService) UpdateQuestion(ctx context.Context, id string, req dto.Up
 			return nil, err
 		}
 		question.TryoutID = &tryoutID
+	}
+	if req.SectorKey != nil {
+		sector, err := validateSector(*req.SectorKey)
+		if err != nil {
+			return nil, err
+		}
+		question.SectorKey = sector
+	}
+	if req.CompanyKey != nil {
+		question.CompanyKey = optionalString(*req.CompanyKey)
+	}
+	if req.TestType != nil {
+		testType, err := validateTestType(*req.TestType)
+		if err != nil {
+			return nil, err
+		}
+		question.TestType = testType
+	}
+	if req.PositionFamily != nil {
+		family, err := validatePositionFamily(*req.PositionFamily)
+		if err != nil {
+			return nil, err
+		}
+		question.PositionFamily = family
+	}
+	if req.VariantGroup != nil {
+		question.VariantGroup = optionalString(*req.VariantGroup)
+	}
+	if req.RetentionUntil != nil {
+		retention, err := parseOptionalTime(*req.RetentionUntil)
+		if err != nil {
+			return nil, apperror.Validation("Batas masa simpan soal tidak valid.", nil)
+		}
+		question.RetentionUntil = retention
 	}
 	if req.Text != nil {
 		question.Text = *req.Text
@@ -406,16 +629,32 @@ func (s *AdminService) UpdateQuestion(ctx context.Context, id string, req dto.Up
 	if err := s.tryouts.UpdateQuestion(ctx, question); err != nil {
 		return nil, err
 	}
+	s.afterQuestionChange(ctx, actorID, *question, models.QuestionActionUpdate, "Soal diubah lewat panel admin.")
 	s.tryoutSvc.InvalidateBankCache(ctx)
 
+	licenses, err := s.licensesByQuestion(ctx, []models.Question{*question})
+	if err != nil {
+		return nil, err
+	}
+
 	view := toQuestionView(*question)
+	applyLicenseSummary(&view, licenses[question.ID])
 	return &view, nil
 }
 
 // DeleteQuestion menghapus soal.
-func (s *AdminService) DeleteQuestion(ctx context.Context, id string) error {
+//
+// `actorID` dipakai mencatat jejak audit bank soal.
+func (s *AdminService) DeleteQuestion(ctx context.Context, actorID, id string) error {
 	if err := s.tryouts.DeleteQuestion(ctx, id); err != nil {
 		return err
+	}
+
+	if s.compliance != nil {
+		if err := s.compliance.RemoveFingerprint(ctx, id); err != nil {
+			return err
+		}
+		s.compliance.Record(ctx, actorID, id, models.QuestionActionDelete, "Soal dihapus dari bank soal.")
 	}
 	s.tryoutSvc.InvalidateBankCache(ctx)
 	return nil

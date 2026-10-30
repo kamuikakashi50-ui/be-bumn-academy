@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 // Difficulty adalah tingkat kesulitan soal.
 type Difficulty string
 
@@ -24,19 +26,39 @@ func (d Difficulty) Valid() bool {
 // SATU tryout, sehingga panel bank soal bisa dikelompokkan per tryout. Nilai
 // NULL berarti soal belum ditautkan ke tryout mana pun (warisan data lama).
 //
+// Tiga dimensi tambahan mengelompokkan soal sesuai kebutuhan seleksi BUMN:
+// `SectorKey` (klaster/sektor BUMN), `TestType` (jenis tes resmi), dan
+// `PositionFamily` (keluarga jabatan). Semuanya bernilai bawaan sehingga soal
+// lama tetap valid tanpa diisi ulang.
+//
 // `AnswerIndex` dan `Explanation` TIDAK PERNAH dikirim ke klien selama sesi
 // tryout berjalan — keduanya baru dibuka pada endpoint review setelah submit.
 type Question struct {
-	ID          string     `gorm:"column:id;primaryKey" json:"id"`
-	BankKey     string     `gorm:"column:bank_key;not null" json:"bankKey"`
-	TryoutID    *string    `gorm:"column:tryout_id" json:"tryoutId,omitempty"`
-	Text        string     `gorm:"column:text;not null" json:"text"`
-	Options     StringList `gorm:"column:options;type:jsonb;not null;default:'[]'" json:"options"`
-	AnswerIndex int        `gorm:"column:answer_index;not null" json:"answerIndex"`
-	Explanation string     `gorm:"column:explanation;not null;default:''" json:"explanation"`
-	Difficulty  Difficulty `gorm:"column:difficulty;not null;default:sedang" json:"difficulty"`
-	Position    int        `gorm:"column:position;not null;default:0" json:"position"`
-	Active      bool       `gorm:"column:active;not null" json:"active"`
+	ID       string  `gorm:"column:id;primaryKey" json:"id"`
+	BankKey  string  `gorm:"column:bank_key;not null" json:"bankKey"`
+	TryoutID *string `gorm:"column:tryout_id" json:"tryoutId,omitempty"`
+	// SectorKey menandai soal sesuai kategori/klaster BUMN (mis. jasa_keuangan).
+	SectorKey string `gorm:"column:sector_key;not null;default:umum" json:"sectorKey"`
+	// CompanyKey menandai soal yang khusus untuk satu BUMN (opsional).
+	CompanyKey *string `gorm:"column:company_key" json:"companyKey,omitempty"`
+	// TestType adalah jenis tes seleksi BUMN (tkd, akhlaq, twk, bing, tkb, …).
+	TestType string `gorm:"column:test_type;not null;default:tkd" json:"testType"`
+	// PositionFamily adalah keluarga jabatan yang dituju soal (khusus TKB).
+	PositionFamily string `gorm:"column:position_family;not null;default:umum" json:"positionFamily"`
+	// VariantGroup menautkan soal-soal yang merupakan varian satu sama lain
+	// (mis. angka berbeda, rumus sama). Sesi tryout hanya memakai SATU soal per
+	// grup sehingga dua peserta tidak mengerjakan soal yang identik.
+	VariantGroup *string `gorm:"column:variant_group" json:"variantGroup,omitempty"`
+	// RetentionUntil membatasi masa simpan soal mengikuti perjanjian
+	// kerahasiaan; NULL berarti tanpa batas.
+	RetentionUntil *time.Time `gorm:"column:retention_until" json:"retentionUntil,omitempty"`
+	Text           string     `gorm:"column:text;not null" json:"text"`
+	Options        StringList `gorm:"column:options;type:jsonb;not null;default:'[]'" json:"options"`
+	AnswerIndex    int        `gorm:"column:answer_index;not null" json:"answerIndex"`
+	Explanation    string     `gorm:"column:explanation;not null;default:''" json:"explanation"`
+	Difficulty     Difficulty `gorm:"column:difficulty;not null;default:sedang" json:"difficulty"`
+	Position       int        `gorm:"column:position;not null;default:0" json:"position"`
+	Active         bool       `gorm:"column:active;not null" json:"active"`
 	Timestamps
 }
 

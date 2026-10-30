@@ -89,11 +89,15 @@ func (h *AdminHandler) MarkOrderPaid(w http.ResponseWriter, r *http.Request) {
 func (h *AdminHandler) ListQuestions(w http.ResponseWriter, r *http.Request) {
 	page := paginationFrom(r)
 	filter := repository.QuestionFilter{
-		BankKey:    r.URL.Query().Get("bankKey"),
-		TryoutID:   r.URL.Query().Get("tryoutId"),
-		Search:     r.URL.Query().Get("search"),
-		Difficulty: r.URL.Query().Get("difficulty"),
-		ActiveOnly: queryBool(r, "activeOnly"),
+		BankKey:        r.URL.Query().Get("bankKey"),
+		TryoutID:       r.URL.Query().Get("tryoutId"),
+		Search:         r.URL.Query().Get("search"),
+		Difficulty:     r.URL.Query().Get("difficulty"),
+		ActiveOnly:     queryBool(r, "activeOnly"),
+		SectorKey:      r.URL.Query().Get("sectorKey"),
+		TestType:       r.URL.Query().Get("testType"),
+		PositionFamily: r.URL.Query().Get("positionFamily"),
+		VariantGroup:   r.URL.Query().Get("variantGroup"),
 	}
 
 	items, total, err := h.deps.Admin.ListQuestions(r.Context(), filter, page.Page, page.PerPage)
@@ -104,6 +108,15 @@ func (h *AdminHandler) ListQuestions(w http.ResponseWriter, r *http.Request) {
 	response.Paginated(w, items, page.Meta(total))
 }
 
+// Taxonomy menangani GET /admin/questions/taxonomy.
+//
+// Panel bank soal memakai daftar ini untuk mengisi pilihan kategori, sektor,
+// jenis tes, dan keluarga jabatan — labelnya bersumber dari backend agar tidak
+// ada dua daftar yang bisa berbeda.
+func (h *AdminHandler) Taxonomy(w http.ResponseWriter, r *http.Request) {
+	response.OK(w, h.deps.Admin.Taxonomy())
+}
+
 // CreateQuestion menangani POST /admin/questions.
 func (h *AdminHandler) CreateQuestion(w http.ResponseWriter, r *http.Request) {
 	var req dto.CreateQuestionRequest
@@ -112,7 +125,7 @@ func (h *AdminHandler) CreateQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	question, err := h.deps.Admin.CreateQuestion(r.Context(), req)
+	question, err := h.deps.Admin.CreateQuestion(r.Context(), middleware.UserID(r.Context()), req)
 	if err != nil {
 		response.Fail(w, err)
 		return
@@ -128,7 +141,8 @@ func (h *AdminHandler) UpdateQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	question, err := h.deps.Admin.UpdateQuestion(r.Context(), pathParam(r, "id"), req)
+	question, err := h.deps.Admin.UpdateQuestion(
+		r.Context(), middleware.UserID(r.Context()), pathParam(r, "id"), req)
 	if err != nil {
 		response.Fail(w, err)
 		return
@@ -138,7 +152,8 @@ func (h *AdminHandler) UpdateQuestion(w http.ResponseWriter, r *http.Request) {
 
 // DeleteQuestion menangani DELETE /admin/questions/{id}.
 func (h *AdminHandler) DeleteQuestion(w http.ResponseWriter, r *http.Request) {
-	if err := h.deps.Admin.DeleteQuestion(r.Context(), pathParam(r, "id")); err != nil {
+	if err := h.deps.Admin.DeleteQuestion(
+		r.Context(), middleware.UserID(r.Context()), pathParam(r, "id")); err != nil {
 		response.Fail(w, err)
 		return
 	}
@@ -165,7 +180,7 @@ func (h *AdminHandler) ImportQuestions(w http.ResponseWriter, r *http.Request) {
 	// `tryoutId` opsional dari formulir: dipakai untuk baris yang tidak menyebut
 	// tryout di dalam berkasnya sendiri.
 	result, err := h.deps.Admin.ImportQuestions(
-		r.Context(), header.Filename, data, r.FormValue("tryoutId"),
+		r.Context(), middleware.UserID(r.Context()), header.Filename, data, r.FormValue("tryoutId"),
 	)
 	if err != nil {
 		response.Fail(w, err)

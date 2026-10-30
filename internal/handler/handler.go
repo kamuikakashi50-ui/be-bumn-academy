@@ -36,6 +36,14 @@ type Deps struct {
 	// HRChat adalah asisten HR (AI) pada dasbor analitik HR.
 	HRChat *service.HRChatService
 	Mentor *service.MentorService
+	// License mengelola izin soal & instrumen psikologi; Compliance menjaga
+	// keunikan bank soal dan jejak auditnya.
+	License    *service.LicenseService
+	Compliance *service.ComplianceService
+	// LearningPath mengelola jalur belajar & kuis per pelajaran (Fase 1).
+	LearningPath *service.LearningPathService
+	// Certificate menerbitkan & memverifikasi sertifikat jalur belajar (Fase 1).
+	Certificate *service.CertificateService
 }
 
 // decodeJSON membaca body JSON dan memvalidasi struct tujuan.

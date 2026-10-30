@@ -7,25 +7,59 @@ type CreateQuestionRequest struct {
 	ID      string `json:"id" validate:"omitempty,max=64"`
 	BankKey string `json:"bankKey" validate:"required,max=40"`
 	// TryoutID wajib: satu soal dimiliki satu paket tryout.
-	TryoutID    string   `json:"tryoutId" validate:"required,max=64"`
-	Text        string   `json:"text" validate:"required,min=5"`
-	Options     []string `json:"options" validate:"required,min=2,max=6,dive,required"`
-	AnswerIndex int      `json:"answerIndex" validate:"gte=0,lte=5"`
-	Explanation string   `json:"explanation" validate:"required,min=5"`
-	Difficulty  string   `json:"difficulty" validate:"omitempty,oneof=mudah sedang sulit"`
-	Active      *bool    `json:"active"`
+	TryoutID string `json:"tryoutId" validate:"required,max=64"`
+	// Dimensi taksonomi. Kosong berarti memakai nilai bawaan
+	// (umum / tkd / umum), sehingga klien lama tetap bisa mengirim payload
+	// tanpa kolom baru.
+	SectorKey      string `json:"sectorKey" validate:"omitempty,max=40"`
+	CompanyKey     string `json:"companyKey" validate:"omitempty,max=40"`
+	TestType       string `json:"testType" validate:"omitempty,max=40"`
+	PositionFamily string `json:"positionFamily" validate:"omitempty,max=40"`
+	// VariantGroup menautkan soal ke grup varian (soal sekeluarga).
+	VariantGroup string `json:"variantGroup" validate:"omitempty,max=80"`
+	// RetentionUntil adalah batas masa simpan soal (format tanggal RFC3339).
+	RetentionUntil string   `json:"retentionUntil" validate:"omitempty"`
+	Text           string   `json:"text" validate:"required,min=5"`
+	Options        []string `json:"options" validate:"required,min=2,max=6,dive,required"`
+	AnswerIndex    int      `json:"answerIndex" validate:"gte=0,lte=5"`
+	Explanation    string   `json:"explanation" validate:"required,min=5"`
+	Difficulty     string   `json:"difficulty" validate:"omitempty,oneof=mudah sedang sulit"`
+	Active         *bool    `json:"active"`
+	// License adalah bukti hak pakai soal. Bila dikosongkan, soal dianggap
+	// dibuat sendiri (scope `internal`) sehingga pengerjaan tryout tidak
+	// terhalang; soal dari vendor wajib mengisi scope & nomor perjanjian.
+	License *QuestionLicenseInput `json:"license" validate:"omitempty"`
+}
+
+// QuestionLicenseInput adalah data izin yang boleh dikirim bersama soal.
+type QuestionLicenseInput struct {
+	Scope          string   `json:"scope" validate:"omitempty,oneof=internal vendor public_domain client_owned"`
+	Owner          string   `json:"owner" validate:"omitempty,max=160"`
+	AgreementNo    string   `json:"agreementNo" validate:"omitempty,max=80"`
+	AgreementURL   string   `json:"agreementUrl" validate:"omitempty,max=300"`
+	CommercialUse  *bool    `json:"commercialUse"`
+	SelectionUse   *bool    `json:"selectionUse"`
+	AllowedSectors []string `json:"allowedSectors" validate:"omitempty,max=13,dive,max=40"`
+	ValidUntil     string   `json:"validUntil" validate:"omitempty"`
+	Notes          string   `json:"notes" validate:"omitempty,max=500"`
 }
 
 // UpdateQuestionRequest adalah payload ubah soal.
 type UpdateQuestionRequest struct {
-	BankKey     *string   `json:"bankKey" validate:"omitempty,max=40"`
-	TryoutID    *string   `json:"tryoutId" validate:"omitempty,max=64"`
-	Text        *string   `json:"text" validate:"omitempty,min=5"`
-	Options     *[]string `json:"options" validate:"omitempty,min=2,max=6,dive,required"`
-	AnswerIndex *int      `json:"answerIndex" validate:"omitempty,gte=0,lte=5"`
-	Explanation *string   `json:"explanation" validate:"omitempty,min=5"`
-	Difficulty  *string   `json:"difficulty" validate:"omitempty,oneof=mudah sedang sulit"`
-	Active      *bool     `json:"active"`
+	BankKey        *string   `json:"bankKey" validate:"omitempty,max=40"`
+	TryoutID       *string   `json:"tryoutId" validate:"omitempty,max=64"`
+	SectorKey      *string   `json:"sectorKey" validate:"omitempty,max=40"`
+	CompanyKey     *string   `json:"companyKey" validate:"omitempty,max=40"`
+	TestType       *string   `json:"testType" validate:"omitempty,max=40"`
+	PositionFamily *string   `json:"positionFamily" validate:"omitempty,max=40"`
+	VariantGroup   *string   `json:"variantGroup" validate:"omitempty,max=80"`
+	RetentionUntil *string   `json:"retentionUntil" validate:"omitempty"`
+	Text           *string   `json:"text" validate:"omitempty,min=5"`
+	Options        *[]string `json:"options" validate:"omitempty,min=2,max=6,dive,required"`
+	AnswerIndex    *int      `json:"answerIndex" validate:"omitempty,gte=0,lte=5"`
+	Explanation    *string   `json:"explanation" validate:"omitempty,min=5"`
+	Difficulty     *string   `json:"difficulty" validate:"omitempty,oneof=mudah sedang sulit"`
+	Active         *bool     `json:"active"`
 }
 
 // QuestionView adalah soal lengkap (khusus admin, termasuk kunci jawaban).
@@ -41,6 +75,24 @@ type QuestionView struct {
 	Explanation string   `json:"explanation"`
 	Difficulty  string   `json:"difficulty"`
 	Active      bool     `json:"active"`
+	// Dimensi taksonomi beserta labelnya agar panel admin tidak perlu
+	// memetakan kunci sendiri.
+	SectorKey           string `json:"sectorKey"`
+	SectorLabel         string `json:"sectorLabel,omitempty"`
+	CompanyKey          string `json:"companyKey,omitempty"`
+	TestType            string `json:"testType"`
+	TestTypeLabel       string `json:"testTypeLabel,omitempty"`
+	PositionFamily      string `json:"positionFamily"`
+	PositionFamilyLabel string `json:"positionFamilyLabel,omitempty"`
+	VariantGroup        string `json:"variantGroup,omitempty"`
+	RetentionUntil      string `json:"retentionUntil,omitempty"`
+	// Ringkasan izin: panel bank soal menandai soal yang izinnya belum lengkap
+	// tanpa perlu membuka halaman izin.
+	LicenseStatus     string `json:"licenseStatus"`
+	LicenseScope      string `json:"licenseScope,omitempty"`
+	LicenseOwner      string `json:"licenseOwner,omitempty"`
+	LicenseValidUntil string `json:"licenseValidUntil,omitempty"`
+	LicenseCount      int    `json:"licenseCount"`
 }
 
 // SubtestInput adalah definisi subtes pada payload admin.
@@ -130,6 +182,31 @@ type ImportResult struct {
 	Unassigned int              `json:"unassigned"`
 	Errors     []ImportRowError `json:"errors,omitempty"`
 	BankKeys   map[string]int   `json:"bankKeys"`
+	// Duplicates menandai baris hasil import yang mirip dengan soal lain di bank
+	// soal (termasuk sesama baris pada berkas yang sama). Import tetap berjalan —
+	// temuan ini bahan tinjauan tim akademik, bukan penghalang.
+	Duplicates []DuplicateHint `json:"duplicates,omitempty"`
+}
+
+// Jenis temuan soal mirip.
+const (
+	// DuplicateIdentical berarti teks soal sama persis (setelah normalisasi).
+	DuplicateIdentical = "identik"
+	// DuplicateFamily berarti teks sama persis kecuali angka.
+	DuplicateFamily = "keluarga"
+	// DuplicateSimilar berarti teks cukup mirip (di atas ambang kemiripan).
+	DuplicateSimilar = "mirip"
+)
+
+// DuplicateHint adalah satu temuan soal yang mirip dengan soal lain.
+type DuplicateHint struct {
+	// Row adalah nomor baris pada berkas import (0 bila bukan dari import).
+	Row        int     `json:"row,omitempty"`
+	QuestionID string  `json:"questionId"`
+	OtherID    string  `json:"otherId"`
+	OtherText  string  `json:"otherText"`
+	Kind       string  `json:"kind"`
+	Similarity float64 `json:"similarity"`
 }
 
 // ImportRowError adalah kesalahan pada satu baris berkas import.

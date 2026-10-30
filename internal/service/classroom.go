@@ -26,6 +26,18 @@ type ClassroomService struct {
 	enrollments *repository.EnrollmentRepository
 	catalog     *repository.CatalogRepository
 	cfg         *config.Config
+	// certificates menerbitkan sertifikat saat materi terakhir sebuah jalur
+	// diselesaikan (opsional; diisi wiring, lihat SetCertificateIssuer).
+	certificates *CertificateService
+}
+
+// SetCertificateIssuer memasang penerbit sertifikat yang dipanggil setelah progres
+// materi tersimpan.
+//
+// Dipisah dari konstruktor agar service ruang kelas tetap bisa dipakai tanpa
+// sertifikat (mis. pada paket uji) dan agar tidak ada ketergantungan melingkar.
+func (s *ClassroomService) SetCertificateIssuer(issuer *CertificateService) {
+	s.certificates = issuer
 }
 
 // NewClassroomService membentuk service ruang kelas.
@@ -242,6 +254,14 @@ func (s *ClassroomService) SaveProgress(ctx context.Context, userID, lessonID st
 	}
 	if err := s.classroom.SaveProgress(ctx, progress); err != nil {
 		return nil, err
+	}
+
+	// Materi selesai bisa melengkapi langkah wajib sebuah jalur. Penerbitan
+	// sertifikat dijalankan setelah progres tersimpan, dan kegagalannya sengaja
+	// diabaikan: progres peserta tidak boleh hilang karena masalah sertifikat.
+	// Peserta bisa memicu ulang lewat POST /learning/paths/{slug}/certificate.
+	if completed && s.certificates != nil {
+		_ = s.certificates.IssueEligibleForModule(ctx, userID, lesson.ModuleID)
 	}
 
 	modules, err := s.classroom.ListModules(ctx, lesson.ProductSlug, false)

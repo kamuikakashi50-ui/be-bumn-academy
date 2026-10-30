@@ -60,6 +60,9 @@ type AppConfig struct {
 	// MediaDir adalah direktori berkas media (video & e-book) yang disajikan
 	// backend pada /api/v1/media/*.
 	MediaDir string
+	// PublicURL adalah alamat situs publik (tanpa garis miring di akhir). Dipakai
+	// untuk mencetak tautan verifikasi sertifikat pada berkas PDF.
+	PublicURL string
 }
 
 // HTTPConfig berisi pengaturan server HTTP.
@@ -140,9 +143,14 @@ type RateLimitConfig struct {
 type BusinessConfig struct {
 	ReferralDiscountPercent int
 	PassingThreshold        int
-	MidtransServerKey       string
-	MidtransClientKey       string
-	MidtransIsProduction    bool
+	// QuestionLicenseEnforce menegakkan izin soal: soal tanpa izin aktif tidak
+	// dikirim ke peserta saat sesi tryout dimulai. Dimatikan hanya untuk
+	// keperluan migrasi data, karena soal tanpa izin berisiko melanggar
+	// perjanjian kerahasiaan.
+	QuestionLicenseEnforce bool
+	MidtransServerKey      string
+	MidtransClientKey      string
+	MidtransIsProduction   bool
 	// MidtransSandboxSimulator mengaktifkan endpoint simulasi pembayaran lokal
 	// (meniru notifikasi Midtrans) agar alur checkout bisa diuji tanpa akun
 	// Midtrans maupun URL publik. Otomatis nonaktif di produksi.
@@ -196,9 +204,10 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		App: AppConfig{
-			Env:      getEnv("APP_ENV", "development"),
-			Name:     getEnv("APP_NAME", "be-bumn-academy"),
-			MediaDir: getEnv("MEDIA_DIR", "./media"),
+			Env:       getEnv("APP_ENV", "development"),
+			Name:      getEnv("APP_NAME", "be-bumn-academy"),
+			MediaDir:  getEnv("MEDIA_DIR", "./media"),
+			PublicURL: strings.TrimRight(getEnv("PUBLIC_BASE_URL", "https://bumnacademy.id"), "/"),
 		},
 		HTTP: HTTPConfig{
 			Port:            getEnv("HTTP_PORT", "8080"),
@@ -250,6 +259,7 @@ func Load() (*Config, error) {
 		Business: BusinessConfig{
 			ReferralDiscountPercent:  getInt("REFERRAL_DISCOUNT_PERCENT", 10),
 			PassingThreshold:         getInt("PASSING_THRESHOLD", 70),
+			QuestionLicenseEnforce:   getBool("QUESTION_LICENSE_ENFORCE", true),
 			MidtransServerKey:        getEnv("MIDTRANS_SERVER_KEY", ""),
 			MidtransClientKey:        getEnv("MIDTRANS_CLIENT_KEY", ""),
 			MidtransIsProduction:     getBool("MIDTRANS_IS_PRODUCTION", false),

@@ -110,6 +110,7 @@ func run() error {
 		repository.NewSessionRepository(db),
 		repository.NewAttemptRepository(db),
 		repository.NewEnrollmentRepository(db),
+		repository.NewLicenseRepository(db),
 		cacheLayer,
 		cfg,
 	), repository.NewUserRepository(db))

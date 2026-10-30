@@ -191,18 +191,31 @@ func toAttemptView(attempt models.Attempt) dto.AttemptView {
 
 func toQuestionView(question models.Question) dto.QuestionView {
 	view := dto.QuestionView{
-		ID:          question.ID,
-		BankKey:     question.BankKey,
-		BankLabel:   bank.Label(question.BankKey),
-		Text:        question.Text,
-		Options:     emptyIfNil(question.Options),
-		AnswerIndex: question.AnswerIndex,
-		Explanation: question.Explanation,
-		Difficulty:  string(question.Difficulty),
-		Active:      question.Active,
+		ID:                  question.ID,
+		BankKey:             question.BankKey,
+		BankLabel:           bank.Label(question.BankKey),
+		Text:                question.Text,
+		Options:             emptyIfNil(question.Options),
+		AnswerIndex:         question.AnswerIndex,
+		Explanation:         question.Explanation,
+		Difficulty:          string(question.Difficulty),
+		Active:              question.Active,
+		SectorKey:           question.SectorKey,
+		SectorLabel:         bank.SectorLabel(question.SectorKey),
+		TestType:            question.TestType,
+		TestTypeLabel:       bank.TestTypeLabel(question.TestType),
+		PositionFamily:      question.PositionFamily,
+		PositionFamilyLabel: bank.PositionFamilyLabel(question.PositionFamily),
+		RetentionUntil:      formatTimePtr(question.RetentionUntil),
 	}
 	if question.TryoutID != nil {
 		view.TryoutID = *question.TryoutID
+	}
+	if question.CompanyKey != nil {
+		view.CompanyKey = *question.CompanyKey
+	}
+	if question.VariantGroup != nil {
+		view.VariantGroup = *question.VariantGroup
 	}
 	return view
 }
