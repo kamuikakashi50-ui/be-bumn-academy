@@ -44,6 +44,12 @@ func buildRouter(
 	// Repository kompetensi (Fase 3): kamus, standar jabatan, penilaian peserta,
 	// dan pemetaan kategori bank soal.
 	competencyRepo := repository.NewCompetencyRepository(db)
+	// Repository talent mapping (Fase 3): instrumen minat–bakat, skor & norma,
+	// bobot lini bisnis, dan rekaman persetujuan.
+	talentRepo := repository.NewTalentRepository(db)
+	// Repository psikolog & konsultasi (Fase 3 langkah 6–7): mitra + izin praktik,
+	// slot, pemesanan, catatan, jejak akses, dan koreksi hasil.
+	psychologistRepo := repository.NewPsychologistRepository(db)
 	licenses := repository.NewLicenseRepository(db)
 	fingerprints := repository.NewComplianceRepository(db)
 	learningPaths := repository.NewLearningPathRepository(db)
@@ -88,6 +94,13 @@ func buildRouter(
 	kpiService := service.NewKPIService(outcomeRepo, cfg)
 	// Kompetensi (Fase 3): kamus + standar jabatan + profil peserta (proksi tryout).
 	competencyService := service.NewCompetencyService(competencyRepo)
+	// Talent mapping (Fase 3): instrumen minat–bakat, skoring & norma, dan fit score.
+	talentService := service.NewTalentService(talentRepo, competencyRepo)
+	// Psikolog & konsultasi daring (Fase 3 langkah 6–7): mitra + izin praktik,
+	// slot & pemesanan, catatan berlapis, jejak akses, dan koreksi hasil.
+	psychologistService := service.NewPsychologistService(
+		psychologistRepo, talentRepo, competencyRepo, users,
+	)
 	// Sertifikat diterbitkan otomatis saat peserta menyelesaikan langkah wajib
 	// (progres materi) atau lulus kuis jalur — dua titik, satu aturan.
 	learningPathService.SetCertificateIssuer(certificateService)
@@ -134,5 +147,7 @@ func buildRouter(
 		OutcomeService:      outcomeService,
 		KPIService:          kpiService,
 		CompetencyService:   competencyService,
+		TalentService:       talentService,
+		PsychologistService: psychologistService,
 	})
 }

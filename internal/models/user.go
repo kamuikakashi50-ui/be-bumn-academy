@@ -15,10 +15,23 @@ const (
 	RolePeserta Role = "peserta"
 	// RoleAdmin adalah akun tim akademik.
 	RoleAdmin Role = "admin"
+	// RolePsikolog adalah mitra psikolog: menginterpretasi asesmen berlisensi
+	// dan menulis catatan konsultasi (Fase 3 §2.8).
+	RolePsikolog Role = "psikolog"
+	// RoleAdminInstansi adalah pengelola dari pihak instansi (HR BUMN); hanya
+	// melihat agregat & catatan yang dibagikan untuk kohortnya (§4.6).
+	RoleAdminInstansi Role = "admin_instansi"
 )
 
 // Valid memeriksa apakah role dikenal.
-func (r Role) Valid() bool { return r == RolePeserta || r == RoleAdmin }
+func (r Role) Valid() bool {
+	switch r {
+	case RolePeserta, RoleAdmin, RolePsikolog, RoleAdminInstansi:
+		return true
+	default:
+		return false
+	}
+}
 
 // User adalah akun pengguna (peserta maupun admin).
 type User struct {
@@ -55,6 +68,12 @@ func (u User) Initials() string {
 
 // IsAdmin menandakan akun memiliki hak akses admin.
 func (u User) IsAdmin() bool { return u.Role == RoleAdmin }
+
+// IsPsikolog menandakan akun adalah mitra psikolog.
+func (u User) IsPsikolog() bool { return u.Role == RolePsikolog }
+
+// IsAdminInstansi menandakan akun adalah pengelola dari pihak instansi.
+func (u User) IsAdminInstansi() bool { return u.Role == RoleAdminInstansi }
 
 // RefreshToken menyimpan hash refresh token (rotasi token saat refresh).
 type RefreshToken struct {

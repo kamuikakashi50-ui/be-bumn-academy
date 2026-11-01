@@ -42,6 +42,12 @@ type Principal struct {
 // IsAdmin menandakan pemanggil adalah admin.
 func (p Principal) IsAdmin() bool { return p.Role == models.RoleAdmin }
 
+// IsPsikolog menandakan pemanggil adalah mitra psikolog.
+func (p Principal) IsPsikolog() bool { return p.Role == models.RolePsikolog }
+
+// IsAdminInstansi menandakan pemanggil adalah pengelola dari pihak instansi.
+func (p Principal) IsAdminInstansi() bool { return p.Role == models.RoleAdminInstansi }
+
 // Manager membuat dan memverifikasi token.
 type Manager struct {
 	secret     []byte

@@ -55,6 +55,12 @@ type Deps struct {
 	// Competency mengelola kamus kompetensi, standar jabatan, profil peserta,
 	// dan matriks kompetensi (Fase 3).
 	Competency *service.CompetencyService
+	// Talent mengelola instrumen minat–bakat, skoring & norma, serta bobot lini
+	// bisnis dan skor kecocokan (Fase 3).
+	Talent *service.TalentService
+	// Psychologist mengelola mitra psikolog, konsultasi daring, jejak akses data
+	// asesmen, dan koreksi hasil (Fase 3 langkah 6–7).
+	Psychologist *service.PsychologistService
 }
 
 // decodeJSON membaca body JSON dan memvalidasi struct tujuan.

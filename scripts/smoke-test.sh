@@ -579,6 +579,238 @@ check "kamus kompetensi butuh token" "$UNAUTH_COMP" "UNAUTHORIZED"
 FORBIDDEN_COMP=$(req "$API/admin/competencies" -H "$AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
 check "peserta tidak bisa membuka kamus kompetensi" "$FORBIDDEN_COMP" "FORBIDDEN"
 
+say "Talent mapping (Fase 3)"
+TALENT_TOKEN=$(req -X POST "$API/auth/login" -d '{"email":"rangga.pratama@bumnacademy.id","password":"peserta123"}' | jq1 "['accessToken']")
+TALENT_AUTH="Authorization: Bearer $TALENT_TOKEN"
+[ -n "$TALENT_TOKEN" ] && ok "login peserta untuk asesmen minat–bakat" || bad "login peserta gagal"
+
+# 1. Instrumen minat–bakat tersedia.
+INSTRUMENTS=$(req "$API/talent/instruments" -H "$TALENT_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d) >= 2, all(i["itemCount"] >= 3 for i in d))')
+check "instrumen minat–bakat tersedia (jumlah/butir)" "$INSTRUMENTS" "True True"
+
+# 2. Memulai asesmen tanpa persetujuan ditolak (UU PDP) — memakai akun baru
+#    yang belum pernah memberi persetujuan.
+NO_CONSENT=$(req -X POST "$API/talent/assessments" -H "$AUTH" -d '{"instrumentCode":"riasec-v1"}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "asesmen tanpa persetujuan ditolak" "$NO_CONSENT" "VALIDATION_ERROR"
+
+# 3. Mulai dengan persetujuan → butir dikirim (tanpa kunci/arah item).
+START=$(req -X POST "$API/talent/assessments" -H "$TALENT_AUTH" \
+  -d '{"instrumentCode":"riasec-v1","consentGranted":true}')
+ASSESSMENT_ID=$(echo "$START" | jq1 "['id']")
+START_CHECK=$(echo "$START" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["status"], len(d["items"]) >= 10, d["answeredCount"])')
+check "asesmen dimulai (status/butir/terjawab)" "$START_CHECK" "berjalan True 0"
+
+# 4. Autosave seluruh jawaban.
+ANSWERS=$(echo "$START" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(json.dumps({"answers":[{"itemId":i["id"],"value":4} for i in d["items"]]}))')
+SAVED=$(req -X PATCH "$API/talent/assessments/$ASSESSMENT_ID/answers" -H "$TALENT_AUTH" -d "$ANSWERS" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["answeredCount"] == d["itemCount"])')
+check "jawaban tersimpan (semua butir terjawab)" "$SAVED" "True"
+
+# 5. Kumpulkan → skor dimensi + peringkat kecocokan lini bisnis.
+PROFILE=$(req -X POST "$API/talent/assessments/$ASSESSMENT_ID/submit" -H "$TALENT_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d["dimensions"]) >= 6, len(d["fit"]) >= 1, all(0 <= x["percentile"] <= 100 for x in d["dimensions"]), len(d["notes"]) >= 1)')
+check "profil talenta (dimensi/kecocokan/persentil/catatan)" "$PROFILE" "True True True True"
+
+# 6. Kumpulkan ulang idempoten (tidak menilai ulang).
+RESUBMIT=$(req -X POST "$API/talent/assessments/$ASSESSMENT_ID/submit" -H "$TALENT_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d["dimensions"]) >= 6)')
+check "kumpulkan ulang idempoten" "$RESUBMIT" "True"
+
+# 7. Peta talenta admin memuat lini bisnis, dimensi, dan baris peserta berdata.
+MAPPING=$(req "$API/admin/talent/mapping?search=rangga" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];rows=d["rows"];print(len(d["businessLines"]) >= 1, len(d["dimensions"]) >= 6, len(rows) >= 1, any(r["hasData"] for r in rows))')
+check "peta talenta admin (lini/dimensi/baris/berdata)" "$MAPPING" "True True True True"
+
+# 8. Bobot lini bisnis bisa diubah (lalu dikembalikan agar data demo utuh).
+LINES=$(req "$API/admin/business-lines" -H "$ADMIN_AUTH")
+LINE_ID=$(echo "$LINES" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d[0]["id"])')
+ORIG_WEIGHTS=$(echo "$LINES" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(json.dumps(d[0]["weights"]))')
+PATCHED=$(req -X PATCH "$API/admin/business-lines/$LINE_ID" -H "$ADMIN_AUTH" \
+  -d '{"weights":{"realistic":3,"investigative":2}}' \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];x=[i for i in d if i["id"]=="'"$LINE_ID"'"][0];print(x["weights"].get("realistic"))')
+check "bobot lini bisnis bisa diubah" "$PATCHED" "3"
+req -o /dev/null -X PATCH "$API/admin/business-lines/$LINE_ID" -H "$ADMIN_AUTH" -d "{\"weights\":$ORIG_WEIGHTS}"
+
+# 9. Negatif: peserta tidak bisa membuka peta talenta admin.
+FORBIDDEN_TALENT=$(req "$API/admin/talent/mapping" -H "$TALENT_AUTH" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "peserta tidak bisa membuka peta talenta admin" "$FORBIDDEN_TALENT" "FORBIDDEN"
+
+# 10. Peserta dengan tryout + instrumen bakat: kerjakan asesmen bakat (aptitude).
+APT_START=$(req -X POST "$API/talent/assessments" -H "$AUTH" \
+  -d '{"instrumentCode":"aptitude-v1","consentGranted":true}')
+APT_ID=$(echo "$APT_START" | jq1 "['id']")
+APT_CHECK=$(echo "$APT_START" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["status"], len(d["items"]) >= 10)')
+check "asesmen bakat dimulai (status/butir)" "$APT_CHECK" "berjalan True"
+APT_ANSWERS=$(echo "$APT_START" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(json.dumps({"answers":[{"itemId":i["id"],"value":4} for i in d["items"]]}))')
+req -o /dev/null -X PATCH "$API/talent/assessments/$APT_ID/answers" -H "$AUTH" -d "$APT_ANSWERS"
+APT_DIMS=$(req -X POST "$API/talent/assessments/$APT_ID/submit" -H "$AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(sorted(x["dimension"] for x in d["dimensions"]) == ["figural","learning_agility","numerik","verbal"])')
+check "skor bakat lengkap (numerik/verbal/figural/learning agility)" "$APT_DIMS" "True"
+
+# 11. Matriks 9-box: 9 kotak pada grid 3×3 dengan label & saran lengkap.
+NINEBOX=$(req "$API/admin/talent/nine-box" -H "$ADMIN_AUTH")
+NINE=$(echo "$NINEBOX" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];c=d["cells"];print(len(c) == 9, len({(x["row"],x["column"]) for x in c}) == 9, all(x["label"] and x["shortLabel"] and x["action"] and isinstance(x["users"], list) for x in c))')
+check "9-box (9 kotak/grid unik/label+saran/anggota berupa daftar)" "$NINE" "True True True"
+
+# 12. Jumlah anggota kotak selaras ringkasan; "data belum cukup" tidak masuk kuadran.
+NINE_SUM=$(echo "$NINEBOX" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(sum(x["count"] for x in d["cells"]) == d["summary"]["withData"], len(d["insufficient"]) == d["summary"]["insufficient"], d["summary"]["totalPeserta"] == d["summary"]["withData"] + d["summary"]["insufficient"])')
+check "9-box (jumlah kotak/ringkasan/data belum cukup selaras)" "$NINE_SUM" "True True True"
+
+# 13. Setiap peserta berada di kotak yang sesuai band skornya (bukan kuadran lain).
+
+NINE_BAND=$(echo "$NINEBOX" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)["data"]
+lo, hi = d["thresholds"]["lowMax"], d["thresholds"]["highMin"]
+def band(v):
+    return "tinggi" if v >= hi else ("sedang" if v >= lo else "rendah")
+same = all(
+    band(m["performance"]) == cell["performanceBand"] and band(m["potential"]) == cell["potentialBand"]
+    for cell in d["cells"] for m in cell["users"]
+)
+print(same, len(d["notes"]) >= 1)
+')
+check "9-box menempatkan peserta sesuai band skornya" "$NINE_BAND" "True True"
+
+# 14. Peserta dengan tryout + hasil instrumen bakat benar-benar terpetakan.
+NINE_FOUND=$(req "$API/admin/talent/nine-box?search=$STAMP" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["summary"]["totalPeserta"] >= 1, d["summary"]["withData"] >= 1)')
+check "peserta dengan tryout + bakat terpetakan pada 9-box" "$NINE_FOUND" "True True"
+
+# 15. Negatif: peserta tidak bisa membuka matriks 9-box admin.
+
+say "Psikolog & konsultasi (Fase 3)"
+PSIKO_TOKEN=$(req -X POST "$API/auth/login" -d '{"email":"psikolog@bumnacademy.id","password":"psikolog123"}' | jq1 "['accessToken']")
+PSIKO_AUTH="Authorization: Bearer $PSIKO_TOKEN"
+[ -n "$PSIKO_TOKEN" ] && ok "login mitra psikolog demo" || bad "login mitra psikolog gagal"
+SITI_TOKEN=$(req -X POST "$API/auth/login" -d '{"email":"siti.nurhaliza@bumnacademy.id","password":"peserta123"}' | jq1 "['accessToken']")
+SITI_AUTH="Authorization: Bearer $SITI_TOKEN"
+[ -n "$SITI_TOKEN" ] && ok "login peserta demo konsultasi" || bad "login peserta konsultasi gagal"
+
+# 16. Registri mitra psikolog: satu terverifikasi, satu masih menunggu.
+PARTNERS=$(req "$API/admin/psychologists" -H "$ADMIN_AUTH")
+PARTNER_CHECK=$(echo "$PARTNERS" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d) >= 2, any(p["status"] == "terverifikasi" and p["assignable"] for p in d), any(p["status"] == "pending" for p in d))')
+check "registri mitra psikolog (terverifikasi/pending/assignable)" "$PARTNER_CHECK" "True True True"
+PARTNER_ID=$(echo "$PARTNERS" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print([p["id"] for p in d if p["status"] == "terverifikasi"][0])')
+
+# 17. Katalog publik peserta: hanya mitra terverifikasi, tanpa nomor izin praktik.
+PUBLIC_PSIKO=$(req "$API/psychologists" -H "$SITI_AUTH")
+PUBLIC_CHECK=$(echo "$PUBLIC_PSIKO" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d) >= 1, all("sippNumber" not in p and "strNumber" not in p for p in d), any(p["openSlots"] >= 1 for p in d))')
+check "daftar mitra publik (terverifikasi/tanpa nomor izin/ada slot)" "$PUBLIC_CHECK" "True True True"
+
+# 18. Memesan slot tanpa persetujuan ditolak (data psikologis = data spesifik).
+SLOTS=$(req "$API/psychologists/$PARTNER_ID/slots" -H "$SITI_AUTH")
+SLOT_ID=$(echo "$SLOTS" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print([s["id"] for s in d if s["remaining"] >= 1][0])')
+NO_CONSENT_BOOK=$(req -X POST "$API/consultations" -H "$AUTH" -d "{\"slotId\":\"$SLOT_ID\"}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "pemesanan konsultasi tanpa persetujuan ditolak" "$NO_CONSENT_BOOK" "VALIDATION_ERROR"
+
+# 19. Dengan persetujuan, pemesanan berhasil dan tercatat di riwayat.
+BOOKED=$(req -X POST "$API/consultations" -H "$AUTH" -d "{\"slotId\":\"$SLOT_ID\",\"agenda\":\"Konsultasi hasil tryout.\",\"consentGranted\":true}" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d["bookings"]) >= 1, d["bookings"][0]["status"], d["bookings"][0]["statusLabel"])')
+check "pemesanan konsultasi berhasil (status)" "$BOOKED" "True terpesan Terpesan"
+BOOKING_ID=$(req "$API/me/consultations" -H "$AUTH" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["bookings"][0]["id"])')
+
+# 20. Memesan slot yang sama dua kali ditolak (satu peserta satu slot).
+DOUBLE=$(req -X POST "$API/consultations" -H "$AUTH" -d "{\"slotId\":\"$SLOT_ID\",\"consentGranted\":true}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "pemesanan ganda pada slot sama ditolak" "$DOUBLE" "CONFLICT"
+
+# 21. Agenda psikolog memuat sesi yang ditugaskan kepadanya.
+AGENDA=$(req "$API/psikolog/agenda" -H "$PSIKO_AUTH")
+AGENDA_CHECK=$(echo "$AGENDA" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["verified"], len(d["sessions"]) >= 1, all("userId" in s for s in d["sessions"]))')
+check "agenda psikolog (terverifikasi/sesi/peserta)" "$AGENDA_CHECK" "True True True"
+# Peserta yang ditugaskan diambil eksplisit dari agenda: sesi demo bersama
+# "Siti Nurhaliza" (bukan peserta smoke yang ikut memesan di langkah 19).
+SUBJECT_ID=$(echo "$AGENDA" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print([s["userId"] for s in d["sessions"] if s["userName"] == "Siti Nurhaliza"][0])')
+SUBJECT_BOOKING=$(echo "$AGENDA" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print([s["bookingId"] for s in d["sessions"] if s["userName"] == "Siti Nurhaliza"][0])')
+
+# 22. Psikolog membuka peserta yang ditugaskan — termasuk jawaban item mentah.
+SITI_ASSESS=$(req -X POST "$API/talent/assessments" -H "$SITI_AUTH" -d '{"instrumentCode":"aptitude-v1","consentGranted":true}')
+SITI_ASSESS_ID=$(echo "$SITI_ASSESS" | jq1 "['id']")
+SITI_ANSWERS=$(echo "$SITI_ASSESS" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(json.dumps({"answers":[{"itemId":i["id"],"value":4} for i in d["items"]]}))')
+req -o /dev/null -X PATCH "$API/talent/assessments/$SITI_ASSESS_ID/answers" -H "$SITI_AUTH" -d "$SITI_ANSWERS" || true
+req -o /dev/null -X POST "$API/talent/assessments/$SITI_ASSESS_ID/submit" -H "$SITI_AUTH" || true
+PARTICIPANT=$(req "$API/psikolog/participants/$SUBJECT_ID" -H "$PSIKO_AUTH")
+PARTICIPANT_CHECK=$(echo "$PARTICIPANT" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["userId"] == "'"$SUBJECT_ID"'", len(d["assessments"]) >= 1, sum(len(a["answers"]) for a in d["assessments"]) >= 10, isinstance(d["interpretations"], list))')
+check "psikolog membuka peserta ditugaskan (jawaban item mentah)" "$PARTICIPANT_CHECK" "True True True True"
+
+# 23. Peserta di luar penugasan ditolak (FORBIDDEN).
+#     Dipakai akun demo yang tidak punya pemesanan dengan mitra ini — peserta
+#     smoke pada langkah 19 justru sudah ditugaskan, jadi tidak bisa dipakai.
+OUTSIDE_TOKEN=$(req -X POST "$API/auth/login" -d '{"email":"peserta@bumnacademy.id","password":"peserta123"}' | jq1 "['accessToken']")
+OUTSIDE_ID=$(req "$API/auth/me" -H "Authorization: Bearer $OUTSIDE_TOKEN" | jq1 "['id']")
+OUTSIDE=$(req "$API/psikolog/participants/$OUTSIDE_ID" -H "$PSIKO_AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "psikolog di luar penugasan ditolak" "$OUTSIDE" "FORBIDDEN"
+
+# 24. Peserta tidak bisa membuka area psikolog.
+NOT_PSIKO=$(req "$API/psikolog/agenda" -H "$SITI_AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "peserta tidak bisa membuka area psikolog" "$NOT_PSIKO" "FORBIDDEN"
+
+FORBIDDEN_NINE=$(req "$API/admin/talent/nine-box" -H "$TALENT_AUTH" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "peserta tidak bisa membuka matriks 9-box" "$FORBIDDEN_NINE" "FORBIDDEN"
+
+
+# 25. Catatan `private` tidak pernah sampai ke peserta; `shared_to_user` sampai.
+PRIVATE_MARK="rahasia-$STAMP"
+req -o /dev/null -X POST "$API/psikolog/consultations/$SUBJECT_BOOKING/note" -H "$PSIKO_AUTH" \
+  -d "{\"summary\":\"$PRIVATE_MARK hanya untuk psikolog.\",\"visibility\":\"private\"}" || true
+SHARED_MARK="dibagikan-$STAMP"
+req -o /dev/null -X POST "$API/psikolog/consultations/$SUBJECT_BOOKING/note" -H "$PSIKO_AUTH" \
+  -d "{\"summary\":\"$SHARED_MARK untuk peserta.\",\"recommendation\":\"Latih penalaran numerik.\",\"visibility\":\"shared_to_user\",\"retentionUntil\":\"2030-01-01\"}" || true
+HISTORY=$(req "$API/me/consultations" -H "$SITI_AUTH")
+NOTE_CHECK=$(echo "$HISTORY" | python3 -c '
+import sys, json
+raw = sys.stdin.read()
+d = json.loads(raw)["data"]
+print("'"$PRIVATE_MARK"'" not in raw,
+      "'"$SHARED_MARK"'" in raw,
+      all(n["visibility"] != "private" for n in d["notes"]),
+      all("visibilityLabel" in n for n in d["notes"]))
+')
+check "catatan berlapis visibilitas (private tidak dibagikan)" "$NOTE_CHECK" "True True True True"
+
+# 26. Jejak akses data asesmen tercatat dan dapat dilihat peserta.
+LOGS=$(req "$API/me/assessment-access-logs" -H "$SITI_AUTH")
+LOG_CHECK=$(echo "$LOGS" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d["logs"]) >= 1, any(l["resource"] == "item_answers" for l in d["logs"]), all(l["actorRole"] for l in d["logs"]))')
+check "jejak akses data asesmen (tercatat & terlihat peserta)" "$LOG_CHECK" "True True True"
+
+# 27. Rekap admin memuat ringkasan status tanpa isi catatan konsultasi.
+RECAP=$(req "$API/admin/consultations" -H "$ADMIN_AUTH")
+RECAP_CHECK=$(echo "$RECAP" | python3 -c '
+import sys, json
+raw = sys.stdin.read()
+d = json.loads(raw)["data"]
+print(len(d["bookings"]) >= 1, len(d["summary"]) >= 1, "penalaran analitis" not in raw, len(d["notes"]) >= 1)
+')
+check "rekap konsultasi admin (ringkasan status, tanpa isi catatan)" "$RECAP_CHECK" "True True True True"
+
+# 28. Mitra tanpa izin aktif tidak boleh ditugaskan; tanggal izin lewat ditolak.
+NEW_PARTNER_NAME="Mitra Uji $STAMP"
+req -o /dev/null -X POST "$API/admin/psychologists" -H "$ADMIN_AUTH" \
+  -d "{\"fullName\":\"$NEW_PARTNER_NAME\",\"email\":\"mitra-$STAMP@mitrapsikologi.id\",\"sippNumber\":\"SIPP-2026-$STAMP\",\"specializations\":[\"Asesmen\"]}" || true
+NEW_PARTNER_ID=$(req "$API/admin/psychologists" -H "$ADMIN_AUTH" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)["data"]
+print([p["id"] for p in d if p["fullName"] == "'"$NEW_PARTNER_NAME"'"][0])
+')
+BAD_VERIFY=$(req -X POST "$API/admin/psychologists/$NEW_PARTNER_ID/verify" -H "$ADMIN_AUTH" \
+  -d '{"status":"terverifikasi","validUntil":"2020-01-01"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "verifikasi mitra dengan izin lewat ditolak" "$BAD_VERIFY" "VALIDATION_ERROR"
+PENDING_NOT_ASSIGNABLE=$(req "$API/admin/psychologists" -H "$ADMIN_AUTH" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)["data"]
+p = [x for x in d if x["fullName"] == "'"$NEW_PARTNER_NAME"'"][0]
+print(p["status"] == "pending", p["assignable"] is False)
+')
+check "mitra baru berstatus pending & belum bisa ditugaskan" "$PENDING_NOT_ASSIGNABLE" "True True"
+
+# 29. Negatif: peserta tidak bisa membuka rekap konsultasi admin.
+FORBIDDEN_RECAP=$(req "$API/admin/consultations" -H "$SITI_AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "peserta tidak bisa membuka rekap konsultasi admin" "$FORBIDDEN_RECAP" "FORBIDDEN"
+
 say "Validasi input"
 BAD=$(req -X POST "$API/auth/register" -d '{"name":"x","email":"bukan-email","password":"123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
 check "validasi menolak payload tidak valid" "$BAD" "VALIDATION_ERROR"

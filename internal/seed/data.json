@@ -15,6 +15,14 @@
       "role": "admin",
       "program": "Tim Akademik",
       "referralCode": "ADMINAKADEMIK"
+    },
+    {
+      "name": "Anindya Prameswari",
+      "email": "psikolog@bumnacademy.id",
+      "password": "psikolog123",
+      "role": "psikolog",
+      "program": "Mitra Psikolog",
+      "referralCode": "PSIKOLOG01"
     }
   ],
   "programs": [

@@ -9,7 +9,8 @@ import (
 
 // TestDataDemoSesuaiKontrak memastikan jumlah data demo tetap sama dengan yang
 // dijanjikan README dan skrip smoke test (45 soal, 5 paket tryout, 4 produk,
-// 4 program, 3 voucher, 8 modul & 15 materi ruang kelas).
+// 4 program, 3 voucher, 8 modul & 15 materi ruang kelas, 3 akun demo termasuk
+// akun mitra psikolog).
 func TestDataDemoSesuaiKontrak(t *testing.T) {
 	data, err := loadDataset()
 	if err != nil {
@@ -25,7 +26,7 @@ func TestDataDemoSesuaiKontrak(t *testing.T) {
 		dapat int
 		harap int
 	}{
-		{"akun demo", len(data.Users), 2},
+		{"akun demo", len(data.Users), 3},
 		{"program", len(data.Programs), 4},
 		{"kategori materi", len(data.MateriCategories), 4},
 		{"produk", len(data.Products), 4},

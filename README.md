@@ -330,6 +330,7 @@ Aturan kuota, kedaluwarsa kode undangan, dan masa akses ada di model murni
 | --- | --- | --- |
 | Peserta | `peserta@bumnacademy.id` | `peserta123` |
 | Admin | `admin@bumnacademy.id` | `admin123` |
+| Mitra psikolog | `psikolog@bumnacademy.id` | `psikolog123` |
 
 ### Kohort demo analitik HR
 
@@ -549,12 +550,166 @@ Aturan kompetensi:
 - **Matriks** menampilkan level tertinggi per sel beserta jumlah gap; level tryout
   diturunkan di memori (GET tidak menulis apa pun).
 
-> Status: **Fase 3 langkah 1–2 selesai** (kompetensi, tanpa menunggu mitra psikolog).
-> Verifikasi: `scripts/smoke-test.sh` **114 lulus / 0 gagal** (8 pemeriksaan
-> kompetensi baru), `npm run verify:kompetensi-ui` **14/14**, dan regresi
+> Status: **MVP Fase 3 selesai (langkah 1–8).** Verifikasi: `scripts/smoke-test.sh`
+> **148 lulus / 0 gagal** (8 pemeriksaan kompetensi + 10 pemeriksaan talent mapping +
+> 7 pemeriksaan 9-box + 18 pemeriksaan psikolog & konsultasi),
+> `npm run verify:kompetensi-ui` **14/14**, dan regresi
 > `verify:kpi-ui`/`verify:kohort-ui`/`verify:jalur-ui`/`verify:kelas-ui`/`verify:lisensi-ui`
-> tetap hijau. Langkah 3–8 (instrumen minat–bakat, fit score, 9-box, mitra psikolog
-> & konsultasi) menyusul.
+> tetap hijau. Bagian berikutnya merinci instrumen minat–bakat, matriks 9-box, dan
+> layanan psikolog/konsultasi.
+
+### Instrumen minat–bakat & skor kecocokan (migrasi 018, Fase 3 langkah 3–4)
+
+Fondasi talent mapping (masukan #1) ada di migrasi `000018_talent_mapping`:
+
+| Tabel | Isi |
+| --- | --- |
+| `talent_instruments` | instrumen minat–bakat (jenis `minat`/`bakat`, versi, `norm_version`, tautan opsional ke registri berlisensi Fase 0) |
+| `talent_items` | butir instrumen (teks, dimensi, bobot, `reverse`) |
+| `talent_norms` | parameter norma per dimensi per versi (`mean`, `sd`) — **tambahan** di luar rancangan awal agar persentil dapat dihitung & diuji |
+| `talent_assessments` | sesi pengerjaan peserta (status `berjalan`/`selesai`/`dibatalkan`, `consent_id`) |
+| `talent_answers` | jawaban per butir (skala 1–5) |
+| `talent_scores` | skor mentah + persentil per dimensi, menyimpan `norm_version` |
+| `business_line_profiles` | bobot dimensi per lini bisnis/klaster BUMN (JSONB, bisa spesifik instansi) |
+| `talent_fit_scores` | skor kecocokan peserta × lini bisnis (`computed_at`) |
+| `consent_records` | rekaman persetujuan pemrosesan data asesmen (UU PDP) |
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| GET | `/talent/instruments` | peserta | instrumen aktif + status pengerjaan (`belum`/`berjalan`/`selesai`) |
+| POST | `/talent/assessments` | peserta | mulai/lanjutkan asesmen (butir dikirim tanpa arah/`reverse`) |
+| PATCH | `/talent/assessments/{id}/answers` | peserta | autosave jawaban bertahap |
+| POST | `/talent/assessments/{id}/submit` | peserta | nilai → skor dimensi + skor kecocokan (idempoten) |
+| GET | `/talent/profile` | peserta | dimensi + persentil + peringkat kecocokan + catatan |
+| GET/POST | `/admin/talent/instruments` | admin | daftar/tambah-ubah instrumen |
+| POST | `/admin/talent/instruments/{id}/items` | admin | tambah-ubah butir instrumen |
+| GET/POST | `/admin/business-lines` | admin | daftar/tambah profil lini bisnis + bobot |
+| PATCH | `/admin/business-lines/{id}` | admin | ubah bobot (skor kecocokan dihitung ulang) |
+| GET | `/admin/talent/mapping` | admin | heatmap peserta × lini bisnis (filter `cohortId`/`program`/`search`) |
+| GET | `/admin/talent/mapping/{userId}` | admin | profil satu peserta + riwayat asesmen |
+| GET | `/admin/talent/nine-box` | admin | sebaran peserta pada matriks 9-box (kinerja × potensi), filter sama dengan peta talenta |
+
+Aturan talent mapping:
+
+- **Skoring.** Item terbalik dibalik (`skor = min + max − nilai`), bobot butir
+  dikalikan, lalu skor mentah per dimensi dipetakan ke **persentil** memakai norma
+  (`Φ((raw − mean) / sd) × 100`). Bila norma satu dimensi belum ada, dipakai
+  persentase terhadap skor maksimum dimensi.
+- **Versi norma disimpan.** Setiap skor menyimpan `norm_version`, sehingga hasil lama
+  tetap dapat dijelaskan dengan norma saat itu (§2.2).
+- **Skor kecocokan** = rata-rata persentil **berbobot** lini bisnis; bobot kosong atau
+  tanpa dimensi yang cocok tidak menghasilkan angka (bukan 0 menyesatkan).
+- **Bobot lini bisnis adalah data.** Mengubah bobot menghitung ulang skor kecocokan
+  lini itu untuk semua peserta yang sudah punya skor (nilai lama ditimpa, `computed_at`
+  diperbarui).
+- **Persetujuan wajib.** Memulai asesmen tanpa persetujuan → `VALIDATION_ERROR`;
+  persetujuan dicatat sekali di `consent_records` (`purpose = assessment`).
+- **Batas etika.** UI menampilkan hasil sebagai **peringkat kecocokan**, bukan
+  "Anda cocok bekerja di X"; instrumen demo adalah instrumen latihan milik kami,
+  bukan alat tes berlisensi (interpretasi berlisensi menyusul bersama mitra psikolog).
+
+> Status: **Fase 3 langkah 3–4 selesai.** Verifikasi: `scripts/smoke-test.sh`
+> **131 lulus / 0 gagal** (10 pemeriksaan talent mapping + 7 pemeriksaan 9-box),
+> `npm run verify:talent-ui` **13/13**, `npm run verify:ninebox-ui` **11/11**, dan
+> seluruh regresi UI fase sebelumnya tetap hijau. Seed demo:
+> 2 instrumen (36 butir), 10 norma, 6 profil lini bisnis.
+
+### Matriks 9-box (Fase 3 langkah 5)
+
+`GET /admin/talent/nine-box` menyusun sebaran peserta pada matriks **kinerja × potensi**
+tanpa tabel baru — seluruhnya dihitung dari data yang sudah ada.
+
+| Sumbu | Sumber | Catatan |
+| --- | --- | --- |
+| Kinerja (X) | rata-rata `attempts.score` per peserta (satu query agregat) | hasil dicatat sistem saat sesi tryout selesai; bukan penilaian kinerja atasan |
+| Potensi (Y) | rata-rata **persentil** dimensi bakat (`numerik`, `verbal`, `figural`, `learning_agility`) dari `talent_scores` | peserta yang baru mengerjakan instrumen minat (RIASEC) belum dapat dipetakan |
+
+Aturan:
+
+- **Satu ambang untuk kedua sumbu**: `< 50` rendah, `50–69` sedang, `≥ 70` tinggi.
+  Nilainya dikirim ke klien lewat `thresholds` agar legenda UI selalu selaras.
+- **Sembilan kotak bernama** (`enigma`, `growth`, `star`, `needs_support`, `core`,
+  `high_performer`, `needs_improvement`, `stable`, `specialist`) beserta `action`
+  (saran tindak lanjut) dan `row`/`column` untuk grid 3×3.
+- **"Data belum cukup"** menampung peserta yang belum punya salah satu sumbu — bukan
+  kuadran rendah, agar tidak ada kesimpulan dari ketiadaan data.
+- **Kotak kosong dikirim sebagai `[]`**, bukan `null`, sehingga klien tidak perlu
+  menangani dua bentuk.
+- Saran tindak lanjut ditulis sebagai **langkah berikutnya**, bukan keputusan
+  penempatan (§4.2).
+
+### Mitra psikolog & konsultasi daring (migrasi 020, Fase 3 langkah 6–7)
+
+Migrasi `000020_psychologist` menambahkan peran baru, registri mitra psikolog, slot
+konsultasi, catatan berlapis visibilitas, jejak akses data asesmen, permohonan
+koreksi hasil, dan catatan interpretasi instrumen:
+
+| Tabel | Isi |
+| --- | --- |
+| `psychologist_partners` | mitra psikolog: SIPP/SIPPK/STR, spesialisasi, `verification_status`, `valid_until` |
+| `consultation_slots` | slot jadwal per mitra (`starts_at`, `mode`, `quota`, `booked`, `channel_url`) |
+| `consultation_bookings` | pemesanan peserta (status `terpesan`/`selesai`/`batal`/`tidak_hadir`, `consent_id`) |
+| `consultation_notes` | catatan sesi (`private`/`shared_to_user`/`shared_to_hr`, `retention_until`) |
+| `assessment_access_logs` | siapa membuka data asesmen siapa (`talent_profile`/`competency`/`consultation_note`/`item_answers`) |
+| `assessment_disputes` | permohonan koreksi hasil asesmen oleh peserta — **tambahan** di luar §3.3 |
+| `instrument_interpretations` | catatan interpretasi psikolog atas instrumen berlisensi — **tambahan** di luar §3.3 |
+
+Peran pengguna diperluas menjadi `peserta`, `admin`, `psikolog`, `admin_instansi`.
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| GET | `/psychologists` | peserta | mitra terverifikasi + jumlah slot tersedia (**tanpa** nomor izin praktik) |
+| GET | `/psychologists/{id}/slots` | peserta | slot tersedia milik satu mitra |
+| POST | `/consultations` | peserta | pesan slot (wajib persetujuan `consultation`) |
+| GET | `/me/consultations` | peserta | riwayat + catatan yang dibagikan |
+| POST | `/me/consultations/{id}/cancel` | peserta | batalkan (≥ 12 jam sebelum jadwal) |
+| POST | `/me/assessments/{id}/dispute` | peserta | ajukan koreksi hasil asesmen |
+| GET | `/me/assessment-disputes` | peserta | daftar permohonan koreksi sendiri |
+| GET | `/me/assessment-access-logs` | peserta | siapa saja yang membuka data asesmennya |
+| GET/POST | `/admin/psychologists` | admin | registri mitra + tambah/ubah |
+| POST | `/admin/psychologists/{id}/verify` | admin | verifikasi izin praktik (SIPP/SIPPK/STR + masa berlaku) |
+| GET | `/admin/psychologists/{id}/slots` | admin | seluruh slot mitra |
+| POST | `/admin/consultation-slots` | admin | buka slot konsultasi |
+| GET | `/admin/consultations` | admin | rekap pemanfaatan layanan (**tanpa** isi catatan) |
+| GET | `/admin/assessment-access-logs/{userId}` | admin | jejak akses data asesmen seorang peserta |
+| GET | `/psikolog/agenda` | psikolog | jadwal sesi yang ditugaskan |
+| GET | `/psikolog/participants/{userId}` | psikolog | data peserta + jawaban item mentah (hanya yang ditugaskan) |
+| POST | `/psikolog/consultations/{id}/note` | psikolog | catatan sesi + tingkat visibilitas |
+| POST | `/psikolog/participants/{userId}/competencies` | psikolog | penilaian kompetensi (`source = asesor`) |
+| POST | `/psikolog/instruments/{code}/interpretation` | psikolog | catatan interpretasi instrumen berlisensi |
+
+Aturan mitra psikolog & konsultasi:
+
+- **Izin praktik menggerbangi penugasan.** Mitra hanya bisa ditugaskan bila
+  `verification_status = terverifikasi` **dan** `valid_until` belum lewat;
+  verifikasi dengan tanggal yang sudah lewat ditolak (§4.7).
+- **Kuota dijaga dua lapis.** `CHECK (booked <= quota)` di database **dan**
+  `UPDATE consultation_slots SET booked = booked + 1 WHERE … booked < quota`, sehingga
+  dua pemesanan berbarengan tidak bisa melampaui kuota.
+- **Satu pemesanan aktif per slot.** Unique index **parsial**
+  (`WHERE status <> 'batal'`) — pemesanan yang dibatalkan tidak menghalangi peserta
+  memesan ulang slot yang sama.
+- **Persetujuan wajib.** Memesan tanpa persetujuan `consultation` → `VALIDATION_ERROR`;
+  persetujuan dicatat di `consent_records` dan dipakai ulang selama belum dicabut.
+- **Pembatalan mandiri ≥ 12 jam.** Setelah itu pemesanan ditandai `tidak_hadir`
+  agar rekap pemanfaatan layanan tetap jujur.
+- **Catatan berlapis visibilitas.** `private` hanya penulis; `shared_to_user` juga
+  peserta; `shared_to_hr` juga HR instansi (kohort sendiri). Admin **tidak pernah**
+  membaca isi catatan — rekap hanya memuat metadata jadwal & status (§4.6).
+- **Retensi menyamarkan isi.** Setelah `retention_until` lewat, isi catatan &
+  interpretasi disamarkan otomatis di semua tampilan.
+- **Jejak akses.** Setiap akses pihak ketiga ke `talent_profile`/`competency`/
+  `consultation_note`/`item_answers` dicatat di `assessment_access_logs` dan dapat
+  dilihat peserta (UU PDP No. 27/2022). Akses peserta ke datanya sendiri tidak dicatat.
+- **Matriks akses 4.6 sebagai fungsi murni** (`internal/service/rbac.go`) supaya
+  setiap barisnya — termasuk uji negatif — teruji otomatis.
+
+> Status: **Fase 3 langkah 6–7 selesai.** Verifikasi: `go test ./...` hijau,
+> smoke test **148/148** (18 pemeriksaan baru), `npm run verify:psikolog-ui` **27/27**
+> (re-runnable), dan rollback migrasi `000020` diverifikasi. Seed demo: 2 mitra
+> (satu terverifikasi + akun `psikolog@bumnacademy.id`), 3 slot, dan satu sesi
+> konsultasi beserta catatannya.
+
 
 ### Jalur belajar & kuis pelajaran (Fase 1)
 

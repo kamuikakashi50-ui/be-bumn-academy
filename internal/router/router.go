@@ -51,6 +51,12 @@ type Options struct {
 	// CompetencyService melayani kamus kompetensi, standar jabatan, profil
 	// peserta, dan matriks kompetensi (Fase 3).
 	CompetencyService *service.CompetencyService
+	// TalentService melayani instrumen minat–bakat, asesmen peserta, bobot lini
+	// bisnis, dan peta talenta (Fase 3).
+	TalentService *service.TalentService
+	// PsychologistService melayani mitra psikolog, konsultasi daring, jejak akses
+	// data asesmen, dan koreksi hasil (Fase 3 langkah 6–7).
+	PsychologistService *service.PsychologistService
 }
 
 // New menyusun router utama aplikasi.
@@ -75,6 +81,8 @@ func New(opts Options) http.Handler {
 		Outcome:      opts.OutcomeService,
 		KPI:          opts.KPIService,
 		Competency:   opts.CompetencyService,
+		Talent:       opts.TalentService,
+		Psychologist: opts.PsychologistService,
 	}
 
 	authHandler := handler.NewAuthHandler(deps)
@@ -93,6 +101,8 @@ func New(opts Options) http.Handler {
 	cohortHandler := handler.NewCohortHandler(deps)
 	outcomeHandler := handler.NewOutcomeHandler(deps)
 	competencyHandler := handler.NewCompetencyHandler(deps)
+	talentHandler := handler.NewTalentHandler(deps)
+	psychologistHandler := handler.NewPsychologistHandler(deps)
 	healthHandler := handler.NewHealthHandler(opts.DB, opts.Cache, opts.Version)
 	mediaHandler := handler.NewMediaHandler(opts.Config.App.MediaDir)
 
@@ -124,24 +134,26 @@ func New(opts Options) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.RateLimit(opts.Limiter))
 		registerRoutes(r, routeHandlers{
-			auth:       authHandler,
-			catalog:    catalogHandler,
-			billing:    billingHandler,
-			tryout:     tryoutHandler,
-			learning:   learningHandler,
-			classroom:  classroomHandler,
-			corporate:  corporateHandler,
-			media:      mediaHandler,
-			admin:      adminHandler,
-			hr:         hrHandler,
-			ai:         aiHandler,
-			license:    licenseHandler,
-			path:       learningPathHandler,
-			cert:       certificateHandler,
-			cohort:     cohortHandler,
-			outcome:    outcomeHandler,
-			competency: competencyHandler,
-			authMid:    authMiddleware,
+			auth:         authHandler,
+			catalog:      catalogHandler,
+			billing:      billingHandler,
+			tryout:       tryoutHandler,
+			learning:     learningHandler,
+			classroom:    classroomHandler,
+			corporate:    corporateHandler,
+			media:        mediaHandler,
+			admin:        adminHandler,
+			hr:           hrHandler,
+			ai:           aiHandler,
+			license:      licenseHandler,
+			path:         learningPathHandler,
+			cert:         certificateHandler,
+			cohort:       cohortHandler,
+			outcome:      outcomeHandler,
+			competency:   competencyHandler,
+			talent:       talentHandler,
+			psychologist: psychologistHandler,
+			authMid:      authMiddleware,
 		})
 	})
 
@@ -175,7 +187,10 @@ type routeHandlers struct {
 	cohort     *handler.CohortHandler
 	outcome    *handler.OutcomeHandler
 	competency *handler.CompetencyHandler
-	authMid    *middleware.Auth
+	talent     *handler.TalentHandler
+	// psychologist melayani mitra psikolog & konsultasi daring (Fase 3).
+	psychologist *handler.PsychologistHandler
+	authMid      *middleware.Auth
 }
 
 func writeJSON(w http.ResponseWriter, status int, body string) {
@@ -280,6 +295,27 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		// Kompetensi peserta (Fase 3): profil kompetensi + gap, dan penilaian diri.
 		r.Get("/me/competencies", h.competency.MyCompetencies)
 		r.Post("/me/competencies/self-assessment", h.competency.SelfAssess)
+
+		// Talent mapping (Fase 3): instrumen minat–bakat + hasil peserta.
+		r.Get("/talent/instruments", h.talent.Instruments)
+		r.Post("/talent/assessments", h.talent.StartAssessment)
+		r.Patch("/talent/assessments/{id}/answers", h.talent.SaveAnswers)
+		r.Post("/talent/assessments/{id}/submit", h.talent.SubmitAssessment)
+		r.Get("/talent/profile", h.talent.Profile)
+
+		// Konsultasi daring (Fase 3 langkah 7): daftar mitra terverifikasi, slot
+		// tersedia, pemesanan (wajib consent), riwayat, dan pembatalan.
+		r.Get("/psychologists", h.psychologist.Psychologists)
+		r.Get("/psychologists/{id}/slots", h.psychologist.PsychologistSlots)
+		r.Post("/consultations", h.psychologist.BookConsultation)
+		r.Get("/me/consultations", h.psychologist.MyConsultations)
+		r.Post("/me/consultations/{id}/cancel", h.psychologist.CancelConsultation)
+
+		// Hak peserta atas datanya (§2.9, §4.7): koreksi hasil, dan transparansi
+		// siapa yang pernah membuka data asesmennya.
+		r.Post("/me/assessments/{id}/dispute", h.psychologist.DisputeAssessment)
+		r.Get("/me/assessment-disputes", h.psychologist.MyDisputes)
+		r.Get("/me/assessment-access-logs", h.psychologist.MyAccessLogs)
 		// Mesin tryout.
 		r.Post("/tryouts/{id}/sessions", h.tryout.StartSession)
 		r.Get("/tryout-sessions/{id}", h.tryout.GetSession)
@@ -451,5 +487,41 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Post("/positions/{family}/requirements", h.competency.UpsertRequirement)
 		r.Delete("/positions/{family}/requirements/{code}", h.competency.DeleteRequirement)
 		r.Get("/competency-matrix", h.competency.AdminMatrix)
+
+		// Talent mapping (Fase 3): instrumen, bobot lini bisnis, peta talenta.
+		r.Get("/talent/instruments", h.talent.AdminInstruments)
+		r.Post("/talent/instruments", h.talent.UpsertInstrument)
+		r.Post("/talent/instruments/{id}/items", h.talent.UpsertInstrumentItem)
+		r.Get("/business-lines", h.talent.BusinessLines)
+		r.Post("/business-lines", h.talent.CreateBusinessLine)
+		r.Patch("/business-lines/{id}", h.talent.UpdateBusinessLine)
+		r.Get("/talent/mapping", h.talent.Mapping)
+		r.Get("/talent/mapping/{userId}", h.talent.MappingDetail)
+		r.Get("/talent/nine-box", h.talent.NineBox)
+
+		// Mitra psikolog & konsultasi (Fase 3 langkah 6–7): registri mitra +
+		// verifikasi izin praktik, pembukaan slot, rekap pemanfaatan layanan,
+		// dan jejak akses data asesmen (audit UU PDP).
+		r.Get("/psychologists", h.psychologist.AdminPsychologists)
+		r.Post("/psychologists", h.psychologist.UpsertPsychologist)
+		r.Post("/psychologists/{id}/verify", h.psychologist.VerifyPsychologist)
+		r.Get("/psychologists/{id}/slots", h.psychologist.AdminPsychologistSlots)
+		r.Post("/consultation-slots", h.psychologist.CreateConsultationSlot)
+		r.Get("/consultations", h.psychologist.AdminConsultations)
+		r.Get("/assessment-access-logs/{userId}", h.psychologist.AdminAccessLogs)
+	})
+
+	// ------------------------------ psikolog -----------------------------
+	// Area mitra psikolog (Fase 3 §5.3). Gerbang peran diperiksa middleware;
+	// kepemilikan penugasan diperiksa lagi di service (§2.8, §4.6).
+	r.Route("/psikolog", func(r chi.Router) {
+		r.Use(h.authMid.Required)
+		r.Use(h.authMid.Psikolog)
+
+		r.Get("/agenda", h.psychologist.Agenda)
+		r.Get("/participants/{userId}", h.psychologist.Participant)
+		r.Post("/consultations/{id}/note", h.psychologist.AddConsultationNote)
+		r.Post("/participants/{userId}/competencies", h.psychologist.AssessCompetency)
+		r.Post("/instruments/{code}/interpretation", h.psychologist.InterpretInstrument)
 	})
 }

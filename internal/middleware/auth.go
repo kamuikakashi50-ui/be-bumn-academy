@@ -65,14 +65,42 @@ func authError(err error) error {
 
 // Admin hanya mengizinkan pengguna dengan peran admin.
 func (a *Auth) Admin(next http.Handler) http.Handler {
+	return a.requireRole(next, "Halaman ini hanya untuk tim akademik.", func(p auth.Principal) bool {
+		return p.IsAdmin()
+	})
+}
+
+// Psikolog hanya mengizinkan pengguna dengan peran psikolog.
+//
+// Area `/psikolog` memuat data peserta yang ditugaskan (termasuk jawaban item
+// mentah), jadi gerbang peran diperiksa di sini dan kepemilikan penugasan
+// diperiksa lagi di service (§2.8, §4.6).
+func (a *Auth) Psikolog(next http.Handler) http.Handler {
+	return a.requireRole(next, "Area ini hanya untuk mitra psikolog.", func(p auth.Principal) bool {
+		return p.IsPsikolog()
+	})
+}
+
+// AdminInstansi hanya mengizinkan pengguna dengan peran admin_instansi.
+//
+// Dipakai endpoint yang menyajikan data kohort milik instansi (agregat & catatan
+// yang dibagikan). Peran admin tetap punya akses penuh lewat grup `/admin`.
+func (a *Auth) AdminInstansi(next http.Handler) http.Handler {
+	return a.requireRole(next, "Area ini hanya untuk pengelola instansi.", func(p auth.Principal) bool {
+		return p.IsAdminInstansi()
+	})
+}
+
+// requireRole membentuk guard peran dengan pesan penolakan yang bisa disesuaikan.
+func (a *Auth) requireRole(next http.Handler, message string, allow func(auth.Principal) bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		principal, ok := auth.PrincipalFromContext(r.Context())
 		if !ok {
 			response.Fail(w, apperror.Unauthorized("Masuk terlebih dahulu untuk mengakses fitur ini."))
 			return
 		}
-		if !principal.IsAdmin() {
-			response.Fail(w, apperror.Forbidden("Halaman ini hanya untuk tim akademik."))
+		if !allow(principal) {
+			response.Fail(w, apperror.Forbidden(message))
 			return
 		}
 		next.ServeHTTP(w, r)

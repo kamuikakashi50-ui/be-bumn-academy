@@ -266,6 +266,35 @@ func (r *CompetencyRepository) UserSkillScoresForUsers(ctx context.Context, user
 	return out, nil
 }
 
+// UserPerformanceRow adalah rata-rata skor tryout seorang peserta.
+type UserPerformanceRow struct {
+	UserID       string  `gorm:"column:user_id"`
+	AverageScore float64 `gorm:"column:average_score"`
+	Attempts     int64   `gorm:"column:attempts"`
+}
+
+// UserPerformanceScores menghitung rata-rata skor tryout sekumpulan peserta —
+// sumbu *performance* pada matriks 9-box (§4.4).
+//
+// Seluruh baris `attempts` adalah hasil yang dicatat sistem saat sesi tryout
+// selesai, jadi tidak ada laporan mandiri yang perlu diverifikasi ulang.
+func (r *CompetencyRepository) UserPerformanceScores(ctx context.Context, userIDs []string) ([]UserPerformanceRow, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	var out []UserPerformanceRow
+	err := r.db.WithContext(ctx).
+		Table("attempts AS a").
+		Select("a.user_id AS user_id, COALESCE(AVG(a.score), 0) AS average_score, COUNT(*) AS attempts").
+		Where("a.user_id IN ?", userIDs).
+		Group("a.user_id").
+		Scan(&out).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal menghitung rata-rata skor tryout peserta.")
+	}
+	return out, nil
+}
+
 // MatrixUserRow adalah satu peserta pada matriks kompetensi.
 type MatrixUserRow struct {
 	ID      string `gorm:"column:id"`

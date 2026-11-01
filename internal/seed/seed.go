@@ -111,6 +111,25 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err := seedBankCompetencyMap(ctx, db); err != nil {
 		return err
 	}
+	// Talent mapping (Fase 3 langkah 3–4): instrumen minat–bakat + norma, dan
+	// bobot lini bisnis. Tidak bergantung psikolog — instrumennya milik kami.
+	if err := seedTalentInstruments(ctx, db); err != nil {
+		return err
+	}
+	if err := seedBusinessLines(ctx, db); err != nil {
+		return err
+	}
+	// Psikolog & konsultasi (Fase 3 langkah 6–7): mitra demo (satu terverifikasi,
+	// satu menunggu), slot konsultasi, dan satu sesi demo beserta catatannya.
+	if err := seedPsychologists(ctx, db, userIDs); err != nil {
+		return err
+	}
+	if err := seedPsychologistSlots(ctx, db); err != nil {
+		return err
+	}
+	if err := seedPsychologistDemoSession(ctx, db, userIDs); err != nil {
+		return err
+	}
 	if err := seedLiveSessions(ctx, db); err != nil {
 		return err
 	}
@@ -142,6 +161,11 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 		"kompetensi", len(competencyDefs),
 		"standar_jabatan", len(positionRequirementDefs),
 		"pemetaan_bank", len(bankCompetencyDefs),
+		"instrumen_talenta", len(talentInstruments),
+		"butir_instrumen", len(riasecItems)+len(aptitudeItems),
+		"lini_bisnis", len(businessLineDefs),
+		"mitra_psikolog", len(psychologistDefs),
+		"slot_konsultasi", len(psychologistSlotDefs),
 	)
 	return nil
 }
