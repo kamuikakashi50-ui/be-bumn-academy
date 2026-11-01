@@ -218,6 +218,36 @@ func (r *ClassroomRepository) LessonsByIDs(ctx context.Context, ids []string) ([
 	return out, nil
 }
 
+// LessonCountsByModules menghitung jumlah materi aktif per modul (satu query).
+//
+// Dipakai daftar kurikulum kelas khusus: jumlah materi tiap modul ditampilkan
+// tanpa query per modul.
+func (r *ClassroomRepository) LessonCountsByModules(ctx context.Context, moduleIDs []string) (map[string]int, error) {
+	out := map[string]int{}
+	if len(moduleIDs) == 0 {
+		return out, nil
+	}
+
+	type row struct {
+		ModuleID string
+		Total    int
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Model(&models.Lesson{}).
+		Select("module_id, COUNT(*) AS total").
+		Where("module_id IN ? AND active = ?", moduleIDs, true).
+		Group("module_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal menghitung materi per modul.")
+	}
+
+	for _, item := range rows {
+		out[item.ModuleID] = item.Total
+	}
+	return out, nil
+}
+
 /* --------------------- ringkasan agregat (analitik HR) -------------------- */
 
 // LearningStatsRow adalah ringkasan kelengkapan belajar ruang kelas digital.

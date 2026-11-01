@@ -48,6 +48,14 @@ REFERRAL=$(echo "$REGISTER" | jq1 "['user']['referralCode']")
 [ -n "$TOKEN" ] && ok "peserta baru terdaftar: $EMAIL (kode referral $REFERRAL)" || bad "pendaftaran gagal"
 AUTH="Authorization: Bearer $TOKEN"
 
+# Akun pembanding: peserta yang **tidak** membeli produk apa pun dan **tidak**
+# menjadi anggota kelas khusus. Dipakai membuktikan penolakan akses materi kelas
+# khusus (peserta di luar kelas) dan pembukaan akses setelah bergabung.
+KOHORT_EMAIL="smoke-kohort-$STAMP@bumnacademy.id"
+KOHORT_TOKEN=$(req -X POST "$API/auth/register" -d "{\"name\":\"Peserta Kohort $STAMP\",\"email\":\"$KOHORT_EMAIL\",\"password\":\"rahasia123\",\"program\":\"Program Reguler\"}" | jq1 "['accessToken']")
+KOHORT_AUTH="Authorization: Bearer $KOHORT_TOKEN"
+[ -n "$KOHORT_TOKEN" ] && ok "akun pembanding terdaftar: $KOHORT_EMAIL" || bad "pendaftaran akun pembanding gagal"
+
 say "Perpanjang token (refresh)"
 REFRESH_TOKEN=$(echo "$REGISTER" | jq1 "['refreshToken']")
 NEW_ACCESS=$(req -X POST "$API/auth/refresh" -d "{\"refreshToken\":\"$REFRESH_TOKEN\"}" | jq1 "['accessToken']")
@@ -267,7 +275,7 @@ ATTEMPTS=$(req "$API/admin/classroom/quizzes/$QUIZ/attempts" -H "$ADMIN_AUTH" \
   | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d), d[0]["initials"], d[0]["score"])')
 check "rekap percobaan kuis admin (jumlah/inisial/skor)" "$ATTEMPTS" "2 PD 100"
 
-DENIED_QUIZ=$(req "$API/classroom/lessons/les-numerik-perbandingan/quiz" -H "$ADMIN_AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+DENIED_QUIZ=$(req "$API/classroom/lessons/les-numerik-perbandingan/quiz" -H "$KOHORT_AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
 check "materi kelas khusus ditolak tanpa kepemilikan produk" "$DENIED_QUIZ" "FORBIDDEN"
 
 # Kuis uji dimatikan setelah dipakai: pelajaran ini berada di dalam jalur belajar
@@ -341,6 +349,114 @@ check "sertifikat dicabut tidak lagi valid" "$REVOKED" "false dicabut"
 req -o /dev/null -X POST "$API/admin/certificates/$CERT_ID/restore" -H "$ADMIN_AUTH"
 RESTORED=$(req "$API/verifikasi/$CERT" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(str(d["valid"]).lower(), d["status"])')
 check "sertifikat dipulihkan kembali sah" "$RESTORED" "true sah"
+
+say "Kelas khusus (Fase 1)"
+COHORT_CODE="SMOKE-$STAMP"
+
+ORG_ID=$(req -X POST "$API/admin/organizations" -H "$ADMIN_AUTH" \
+  -d "{\"name\":\"Instansi Smoke $STAMP\",\"sectorKey\":\"jasa_keuangan\",\"picName\":\"PIC Smoke\",\"picEmail\":\"pic@smoke.id\"}" \
+  | jq1 "['id']")
+[ -n "$ORG_ID" ] && ok "instansi mitra dibuat ($ORG_ID)" || bad "gagal membuat instansi mitra"
+
+COHORT_ID=$(req -X POST "$API/admin/cohorts" -H "$ADMIN_AUTH" \
+  -d "{\"orgId\":\"$ORG_ID\",\"name\":\"Kelas Smoke $STAMP\",\"code\":\"$COHORT_CODE\",\"sectorKey\":\"jasa_keuangan\",\"status\":\"aktif\",\"quota\":5,\"curriculum\":[{\"moduleId\":\"mod-intensif-akhlak\",\"required\":true},{\"moduleId\":\"mod-intensif-inggris\",\"required\":false}]}" \
+  | jq1 "['id']")
+[ -n "$COHORT_ID" ] && ok "kelas khusus dibuat ($COHORT_ID)" || bad "gagal membuat kelas khusus"
+
+# Modul wajib/opsional harus tersimpan apa adanya (`required:false` tidak boleh
+# ditelan default kolom).
+COHORT_DETAIL=$(req "$API/admin/cohorts/$COHORT_ID" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["moduleCount"], d["requiredModuleCount"], d["statusLabel"], d["orgName"])')
+check "detail kelas (modul/wajib/status/instansi)" "$COHORT_DETAIL" "2 1 Aktif Instansi Smoke $STAMP"
+
+COHORT_INVITE=$(req -X POST "$API/admin/cohorts/$COHORT_ID/invites" -H "$ADMIN_AUTH" -d '{}' | jq1 "['code']")
+check "kode undangan dibuat (8 karakter)" "${#COHORT_INVITE}" "8"
+
+DENIED=$(req "$API/classroom/lessons/les-akhlak-studi-kasus" -H "$KOHORT_AUTH" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "peserta non-anggota ditolak membuka modul kelas" "$DENIED" "FORBIDDEN"
+
+JOINED=$(req -X POST "$API/cohorts/join" -H "$KOHORT_AUTH" -d "{\"code\":\"$COHORT_INVITE\"}" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(str(d["alreadyMember"]).lower(), len(d["cohort"]["curriculum"]))')
+check "peserta gabung kelas dengan kode undangan" "$JOINED" "false 2"
+
+ALLOWED=$(req "$API/classroom/lessons/les-akhlak-studi-kasus" -H "$KOHORT_AUTH" | jq1 "['lesson']['moduleId']")
+check "anggota kelas membuka materi tanpa membeli produk" "$ALLOWED" "mod-intensif-akhlak"
+
+# Modul di luar kurikulum kelas tetap terkunci walau produknya sama.
+OUTSIDE=$(req "$API/classroom/lessons/les-numerik-deret" -H "$KOHORT_AUTH" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "modul di luar kurikulum kelas tetap ditolak" "$OUTSIDE" "FORBIDDEN"
+
+DUPLICATE=$(req -X POST "$API/cohorts/join" -H "$KOHORT_AUTH" -d "{\"code\":\"$COHORT_INVITE\"}" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "gabung ulang ditolak (idempoten, kuota kode tidak bertambah)" "$DUPLICATE" "CONFLICT"
+
+EXPIRED_CODE=$(req -X POST "$API/admin/cohorts/$COHORT_ID/invites" -H "$ADMIN_AUTH" -d '{"expiresAt":"2020-01-01"}' | jq1 "['code']")
+EXPIRED=$(req -X POST "$API/cohorts/join" -H "$KOHORT_AUTH" -d "{\"code\":\"$EXPIRED_CODE\"}" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "kode undangan kedaluwarsa ditolak" "$EXPIRED" "VALIDATION_ERROR"
+
+# Kode berkuota 1: pemakaian pertama menambah kuota, pemakaian berikutnya ditolak.
+FULL_CODE=$(req -X POST "$API/admin/cohorts/$COHORT_ID/invites" -H "$ADMIN_AUTH" -d '{"maxUses":1}' | jq1 "['code']")
+FIRST_USE=$(req -X POST "$API/cohorts/join" -H "$AUTH" -d "{\"code\":\"$FULL_CODE\"}" | jq1 "['alreadyMember']")
+check "kode berkuota dipakai peserta pertama" "$FIRST_USE" "False"
+
+KOHORT2_TOKEN=$(req -X POST "$API/auth/register" -d "{\"name\":\"Peserta Kohort Dua $STAMP\",\"email\":\"smoke-kohort2-$STAMP@bumnacademy.id\",\"password\":\"rahasia123\",\"program\":\"Program Reguler\"}" | jq1 "['accessToken']")
+EXHAUSTED=$(req -X POST "$API/cohorts/join" -H "Authorization: Bearer $KOHORT2_TOKEN" -d "{\"code\":\"$FULL_CODE\"}" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "kode undangan penuh ditolak" "$EXHAUSTED" "CONFLICT"
+
+INVITE_STATE=$(req "$API/admin/cohorts/$COHORT_ID/invites" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];x=[i for i in d if i["code"]=="'"$FULL_CODE"'"];print(x[0]["usedCount"], x[0]["remaining"], str(x[0]["usable"]).lower())')
+check "pemakaian kode tercatat (dipakai/sisa/layak)" "$INVITE_STATE" "1 0 false"
+
+ME=$(req "$API/cohorts/me" -H "$KOHORT_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d), str(d[0]["accessOpen"]).lower(), d[0]["statusLabel"])')
+check "peserta melihat kelasnya (jumlah/akses/status)" "$ME" "1 true Aktif"
+
+AUDIT=$(req "$API/admin/cohorts/$COHORT_ID/audit" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len([a for a in d if a["action"] in ("cohort_created","invite_created","invite_used")]) >= 4)')
+check "jejak audit kelas mencatat pembuatan & pemakaian kode" "$AUDIT" "True"
+
+# Laporan kelas: agregat + rincian anggota kelas itu saja (isolasi §4.7).
+REPORT=$(req "$API/admin/cohorts/$COHORT_ID/report" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d["members"]), d["summary"]["totalMembers"], d["summary"]["reportingMembers"], len(d["modules"]), d["summary"]["totalLessons"])')
+check "laporan kelas (anggota/total/pelatih/modul/materi)" "$REPORT" "2 2 1 2 4"
+
+REPORT_SUM=$(req "$API/admin/cohorts/$COHORT_ID/report" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];s=d["summary"];print(s["activeMembers"], s["passingThreshold"], s["certificates"], len(d["topLearners"]) >= 1, len(d["notes"]) >= 1)')
+check "ringkasan laporan (aktif/ambang/sertifikat/prestasi/catatan)" "$REPORT_SUM" "2 70 0 True True"
+
+ISOLATED=$(req "$API/admin/cohorts/$COHORT_ID/report" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];names=" | ".join(m["name"] for m in d["members"]);print("Peserta Kohort" in names, "Dewi Lestari" in names)')
+check "laporan hanya memuat peserta kelas ini (isolasi)" "$ISOLATED" "True False"
+
+# Laporan kelas demo (data seed): mentor kelas tidak dihitung sebagai peserta.
+DEMO_COHORT_ID=$(req "$API/admin/cohorts?search=DEMO-BATCH-1" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d[0]["id"] if d else "")')
+DEMO_REPORT=$(req "$API/admin/cohorts/$DEMO_COHORT_ID/report" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];names=" | ".join(m["name"] for m in d["members"]);print(d["summary"]["totalMembers"], "Dewi Lestari" in names, "Admin Akademik" in names)')
+check "laporan kelas demo (peserta seed, mentor dikecualikan)" "$DEMO_REPORT" "3 True False"
+
+LAPORAN=/tmp/laporan-kelas-smoke.pdf
+PDF_STATUS=$(curl -s -m 20 -o "$LAPORAN" -w '%{http_code}' "$API/admin/cohorts/$COHORT_ID/report.pdf" -H "$ADMIN_AUTH")
+check "unduh PDF laporan kelas (status)" "$PDF_STATUS" "200"
+if head -c 5 "$LAPORAN" | grep -q '%PDF-'; then
+  ok "berkas laporan kelas sah (PDF)"
+else
+  bad "berkas laporan kelas bukan PDF"
+fi
+LAPORAN_SIZE=$(wc -c < "$LAPORAN" | tr -d ' ')
+[ "$LAPORAN_SIZE" -gt 2000 ] && ok "ukuran laporan wajar ($LAPORAN_SIZE byte)" || bad "laporan terlalu kecil ($LAPORAN_SIZE byte)"
+rm -f "$LAPORAN"
+
+# Kelas uji diarsipkan di akhir agar tidak muncul sebagai kelas aktif pada
+# pemeriksaan berikutnya (endpoint hapus sengaja tidak ada — data kelas dirujuk
+# laporan).
+req -o /dev/null -X PATCH "$API/admin/cohorts/$COHORT_ID" -H "$ADMIN_AUTH" -d '{"status":"arsip"}'
+ARCHIVED=$(req "$API/cohorts/me" -H "$KOHORT_AUTH" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)["data"]))')
+check "kelas diarsipkan tidak lagi aktif bagi peserta" "$ARCHIVED" "0"
 
 say "Validasi input"
 BAD=$(req -X POST "$API/auth/register" -d '{"name":"x","email":"bukan-email","password":"123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')

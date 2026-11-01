@@ -21,11 +21,14 @@ const CompletedThreshold = 90
 
 // ClassroomService melayani ruang kelas digital: daftar materi per produk,
 // detail pelajaran, progres menonton/membaca, dan e-book PDF.
+//
+// Akses materi diperiksa lewat `AccessChecker` (satu titik aturan): kepemilikan
+// produk, keanggotaan kelas khusus, atau materi contoh.
 type ClassroomService struct {
-	classroom   *repository.ClassroomRepository
-	enrollments *repository.EnrollmentRepository
-	catalog     *repository.CatalogRepository
-	cfg         *config.Config
+	classroom *repository.ClassroomRepository
+	catalog   *repository.CatalogRepository
+	access    *AccessChecker
+	cfg       *config.Config
 	// certificates menerbitkan sertifikat saat materi terakhir sebuah jalur
 	// diselesaikan (opsional; diisi wiring, lihat SetCertificateIssuer).
 	certificates *CertificateService
@@ -43,15 +46,15 @@ func (s *ClassroomService) SetCertificateIssuer(issuer *CertificateService) {
 // NewClassroomService membentuk service ruang kelas.
 func NewClassroomService(
 	classroom *repository.ClassroomRepository,
-	enrollments *repository.EnrollmentRepository,
 	catalog *repository.CatalogRepository,
+	access *AccessChecker,
 	cfg *config.Config,
 ) *ClassroomService {
 	return &ClassroomService{
-		classroom:   classroom,
-		enrollments: enrollments,
-		catalog:     catalog,
-		cfg:         cfg,
+		classroom: classroom,
+		catalog:   catalog,
+		access:    access,
+		cfg:       cfg,
 	}
 }
 
@@ -65,14 +68,15 @@ type EbookResult struct {
 
 /* --------------------------------- peserta -------------------------------- */
 
-// Courses mengembalikan ringkasan ruang kelas untuk seluruh produk yang dimiliki
-// peserta (produk tanpa materi tetap ditampilkan agar tidak membingungkan).
+// Courses mengembalikan ringkasan ruang kelas untuk seluruh produk yang bisa
+// dibuka peserta: produk yang dibeli maupun produk yang muncul di kurikulum kelas
+// khususnya (produk tanpa materi tetap ditampilkan agar tidak membingungkan).
 func (s *ClassroomService) Courses(ctx context.Context, userID string) ([]dto.CourseView, error) {
-	slugs, err := s.enrollments.OwnedSlugs(ctx, userID)
+	accessible, err := s.access.AccessibleProducts(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if len(slugs) == 0 {
+	if len(accessible) == 0 {
 		return []dto.CourseView{}, nil
 	}
 
@@ -99,9 +103,19 @@ func (s *ClassroomService) Courses(ctx context.Context, userID string) ([]dto.Co
 		grouped[module.ProductSlug] = append(grouped[module.ProductSlug], module)
 	}
 
-	out := make([]dto.CourseView, 0, len(slugs))
-	for _, slug := range slugs {
-		course := s.buildCourse(slug, grouped[slug], progress)
+	owned, err := s.access.OwnedProducts(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	cohortModules, err := s.access.CohortModuleIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]dto.CourseView, 0, len(accessible))
+	for slug := range accessible {
+		visible := filterVisibleModules(grouped[slug], owned, cohortModules, slug)
+		course := s.buildCourse(slug, visible, progress)
 		if product, ok := byName[slug]; ok {
 			course.ProductName = product.Name
 			course.Description = product.Description
@@ -122,13 +136,18 @@ func (s *ClassroomService) Courses(ctx context.Context, userID string) ([]dto.Co
 	return out, nil
 }
 
-// Course mengambil isi ruang kelas satu produk (wajib dimiliki peserta).
+// Course mengambil isi ruang kelas satu produk (produk yang dimiliki peserta atau
+// produk yang ada di kurikulum kelas khususnya).
 func (s *ClassroomService) Course(ctx context.Context, userID, productSlug string) (*dto.ClassroomView, error) {
-	if err := s.requireOwnership(ctx, userID, productSlug); err != nil {
+	if err := s.access.RequireProduct(ctx, userID, productSlug); err != nil {
 		return nil, err
 	}
 
 	modules, err := s.classroom.ListModules(ctx, productSlug, false)
+	if err != nil {
+		return nil, err
+	}
+	modules, err = s.visibleModules(ctx, userID, productSlug, modules)
 	if err != nil {
 		return nil, err
 	}
@@ -155,11 +174,15 @@ func (s *ClassroomService) Lesson(ctx context.Context, userID, lessonID string) 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireOwnership(ctx, userID, lesson.ProductSlug); err != nil {
+	if err := s.access.RequireLesson(ctx, userID, *lesson); err != nil {
 		return nil, err
 	}
 
 	modules, err := s.classroom.ListModules(ctx, lesson.ProductSlug, false)
+	if err != nil {
+		return nil, err
+	}
+	modules, err = s.visibleModules(ctx, userID, lesson.ProductSlug, modules)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +227,7 @@ func (s *ClassroomService) SaveProgress(ctx context.Context, userID, lessonID st
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireOwnership(ctx, userID, lesson.ProductSlug); err != nil {
+	if err := s.access.RequireLesson(ctx, userID, *lesson); err != nil {
 		return nil, err
 	}
 
@@ -281,7 +304,7 @@ func (s *ClassroomService) Ebook(ctx context.Context, userID, lessonID string) (
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireOwnership(ctx, userID, lesson.ProductSlug); err != nil {
+	if err := s.access.RequireLesson(ctx, userID, *lesson); err != nil {
 		return nil, err
 	}
 	if url := strings.TrimSpace(strPtrOrEmpty(lesson.EbookURL)); url != "" {
@@ -365,18 +388,69 @@ func (s *ClassroomService) ContinueLearning(ctx context.Context, userID string, 
 
 /* ---------------------------------- util ---------------------------------- */
 
-// requireOwnership memastikan peserta memiliki produk pemilik pelajaran.
-func (s *ClassroomService) requireOwnership(ctx context.Context, userID, productSlug string) error {
-	owned, err := s.enrollments.OwnedSlugs(ctx, userID)
+// AccessibleProductSlugs mengembalikan slug produk yang bisa dibuka peserta:
+// produk yang dibeli maupun produk yang muncul di kurikulum kelas khususnya.
+//
+// Dipakai ringkasan dashboard peserta agar kelas khusus yang diikuti ikut
+// terhitung walau produknya tidak dibeli.
+func (s *ClassroomService) AccessibleProductSlugs(ctx context.Context, userID string) ([]string, error) {
+	accessible, err := s.access.AccessibleProducts(ctx, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for _, slug := range owned {
-		if slug == productSlug {
-			return nil
+
+	out := make([]string, 0, len(accessible))
+	for slug := range accessible {
+		out = append(out, slug)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// visibleModules menyaring modul yang boleh dilihat peserta pada satu produk.
+//
+// Peserta yang memiliki produk melihat seluruh modulnya. Peserta yang masuk lewat
+// kelas khusus hanya melihat modul yang ada di kurikulum kelasnya, sehingga modul
+// di luar kelasnya tidak muncul di daftar (walaupun produknya sama).
+func (s *ClassroomService) visibleModules(
+	ctx context.Context,
+	userID, productSlug string,
+	modules []models.CourseModule,
+) ([]models.CourseModule, error) {
+	owned, err := s.access.OwnsProduct(ctx, userID, productSlug)
+	if err != nil {
+		return nil, err
+	}
+	if owned {
+		return modules, nil
+	}
+
+	cohortModules, err := s.access.CohortModuleIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return filterVisibleModules(modules, map[string]struct{}{}, cohortModules, productSlug), nil
+}
+
+// filterVisibleModules menyaring modul dengan daftar produk yang dimiliki &
+// modul kelas khusus yang diikuti (bentuk murni, agar bisa dipakai berulang tanpa
+// query tambahan).
+func filterVisibleModules(
+	modules []models.CourseModule,
+	ownedProducts, cohortModules map[string]struct{},
+	productSlug string,
+) []models.CourseModule {
+	if _, owned := ownedProducts[productSlug]; owned {
+		return modules
+	}
+
+	out := make([]models.CourseModule, 0, len(modules))
+	for _, module := range modules {
+		if _, ok := cohortModules[module.ID]; ok {
+			out = append(out, module)
 		}
 	}
-	return apperror.Forbidden("Kamu belum memiliki akses ke materi ini.")
+	return out
 }
 
 // progressMap memuat seluruh progres peserta dan memetakannya per pelajaran.

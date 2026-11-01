@@ -37,6 +37,10 @@ func buildRouter(
 	classroomRepo := repository.NewClassroomRepository(db)
 	aiRepo := repository.NewAIRepository(db)
 
+	cohortRepo := repository.NewCohortRepository(db)
+	// Repository KPI kelulusan (Fase 2): tahapan seleksi, laporan hasil seleksi,
+	// jejak audit verifikasi, target KPI, dan query agregatnya.
+	outcomeRepo := repository.NewOutcomeRepository(db)
 	licenses := repository.NewLicenseRepository(db)
 	fingerprints := repository.NewComplianceRepository(db)
 	learningPaths := repository.NewLearningPathRepository(db)
@@ -57,22 +61,28 @@ func buildRouter(
 	})
 	logger.Info("integrasi pembayaran disiapkan", "provider", midtransClient.Describe())
 
+	// Pemeriksa akses materi dipakai ruang kelas, jalur belajar, kuis, dan
+	// sertifikat: satu titik aturan (kepemilikan produk, kelas khusus, materi contoh).
+	accessChecker := service.NewAccessChecker(enrollments, cohortRepo)
+
 	billingService := service.NewBillingService(catalog, orders, enrollments, users, learning, midtransClient, cfg)
-	tryoutService := service.NewTryoutService(tryouts, sessions, attempts, enrollments, licenses, cacheLayer, cfg)
-	classroomService := service.NewClassroomService(classroomRepo, enrollments, catalog, cfg)
+	tryoutService := service.NewTryoutService(tryouts, sessions, attempts, enrollments, licenses, cohortRepo, cacheLayer, cfg)
+	classroomService := service.NewClassroomService(classroomRepo, catalog, accessChecker, cfg)
 	corporateService := service.NewCorporateService(attempts, users, cacheLayer, cfg)
-	learningService := service.NewLearningService(learning, attempts, enrollments, tryoutService, classroomService, cacheLayer, cfg)
+	learningService := service.NewLearningService(learning, attempts, enrollments, tryoutService, classroomService, cohortRepo, cacheLayer, cfg)
 	complianceService := service.NewComplianceService(fingerprints, tryouts, cfg, logger)
 	licenseService := service.NewLicenseService(licenses, tryouts, tryoutService, cfg, logger)
-	// Pemeriksa akses materi dipakai jalur belajar & kuis; ClassroomService masih
-	// memakai pemeriksaan miliknya sampai langkah konsolidasi berikutnya.
-	accessChecker := service.NewAccessChecker(enrollments)
 	learningPathService := service.NewLearningPathService(
 		learningPaths, classroomRepo, catalog, tryouts, licenses, accessChecker, cfg,
 	)
+	cohortService := service.NewCohortService(cohortRepo, users, classroomRepo, cfg)
 	certificateService := service.NewCertificateService(
 		learningPaths, classroomRepo, users, accessChecker, cfg,
 	)
+	// KPI kelulusan (Fase 2): tracer study hasil seleksi + verifikasi bukti, lalu
+	// perhitungan KPI, ekspor, dan ringkasan publiknya.
+	outcomeService := service.NewOutcomeService(outcomeRepo, cohortRepo, cfg)
+	kpiService := service.NewKPIService(outcomeRepo, cfg)
 	// Sertifikat diterbitkan otomatis saat peserta menyelesaikan langkah wajib
 	// (progres materi) atau lulus kuis jalur — dua titik, satu aturan.
 	learningPathService.SetCertificateIssuer(certificateService)
@@ -115,5 +125,8 @@ func buildRouter(
 		ComplianceService:   complianceService,
 		LearningPathService: learningPathService,
 		CertificateService:  certificateService,
+		CohortService:       cohortService,
+		OutcomeService:      outcomeService,
+		KPIService:          kpiService,
 	})
 }

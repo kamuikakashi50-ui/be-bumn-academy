@@ -8,6 +8,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/bumn-academy/be-bumn-academy/internal/models"
@@ -170,6 +171,51 @@ func (r *UserRepository) ProgramBreakdown(ctx context.Context) ([]ProgramBreakdo
 }
 
 /* ---------------------------- refresh token ----------------------------- */
+
+// ListByIDs mengambil beberapa pengguna sekaligus (menghindari N+1 saat
+// menampilkan nama mentor/anggota kelas).
+func (r *UserRepository) ListByIDs(ctx context.Context, ids []string) (map[string]models.User, error) {
+	out := map[string]models.User{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	var rows []models.User
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal memuat data pengguna.")
+	}
+	for _, user := range rows {
+		out[user.ID] = user
+	}
+	return out, nil
+}
+
+// FindByEmails mengambil beberapa pengguna berdasarkan email (satu query).
+//
+// Kunci peta memakai email huruf kecil supaya pencocokan tidak sensitif huruf
+// besar/kecil — penting saat admin menempelkan daftar email peserta.
+func (r *UserRepository) FindByEmails(ctx context.Context, emails []string) (map[string]models.User, error) {
+	out := map[string]models.User{}
+	if len(emails) == 0 {
+		return out, nil
+	}
+
+	normalized := make([]string, 0, len(emails))
+	for _, email := range emails {
+		normalized = append(normalized, strings.ToLower(strings.TrimSpace(email)))
+	}
+
+	var rows []models.User
+	err := r.db.WithContext(ctx).Where("LOWER(email) IN ?", normalized).Find(&rows).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal memuat akun peserta.")
+	}
+	for _, user := range rows {
+		out[strings.ToLower(user.Email)] = user
+	}
+	return out, nil
+}
 
 // CreateRefreshToken menyimpan refresh token baru.
 func (r *UserRepository) CreateRefreshToken(ctx context.Context, token *models.RefreshToken) error {

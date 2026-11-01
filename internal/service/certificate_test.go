@@ -62,3 +62,42 @@ func TestPathHasModuleMenandaiJalurYangMemuatModul(t *testing.T) {
 		t.Error("jalur tanpa langkah tidak memuat modul apa pun")
 	}
 }
+
+// Uji metadata sertifikat: peserta kelas khusus harus membawa nama kelas &
+// instansinya, sehingga sertifikat kelas bisa menyebut instansi tanpa menebak dari
+// data lain (§4.3).
+func TestCertificateMetadataMemuatKelasDanInstansi(t *testing.T) {
+	path := &models.LearningPath{ID: "path-1", Title: "Jalur TKD Dasar", SectorKey: "jasa_keuangan", TestType: "tkd"}
+	issuedAt := time.Date(2026, 11, 20, 3, 0, 0, 0, time.UTC)
+
+	// Tanpa kelas khusus: metadata lama tetap lengkap, tanpa nama instansi.
+	plain := certificateMetadata("Peserta Demo", path, issuedAt, nil)
+	if plain["participantName"] != "Peserta Demo" || plain["pathTitle"] != "Jalur TKD Dasar" {
+		t.Errorf("metadata dasar tidak lengkap: %v", plain)
+	}
+	if _, ok := plain["organization"]; ok {
+		t.Error("peserta tanpa kelas khusus tidak boleh punya instansi di metadata")
+	}
+	if plain["issuedDate"] != "2026-11-20" {
+		t.Errorf("tanggal terbit harus format WIB: %v", plain["issuedDate"])
+	}
+
+	// Dengan kelas khusus: nama kelas & instansi ikut tersimpan.
+	cohort := &models.Cohort{
+		ID: "c-1", Name: "Kelas Khusus TKD Batch 1",
+		Organization: &models.Organization{ID: "org-1", Name: "Bank Nusantara"},
+	}
+	withCohort := certificateMetadata("Peserta Demo", path, issuedAt, cohort)
+	if withCohort["cohortName"] != "Kelas Khusus TKD Batch 1" {
+		t.Errorf("nama kelas tidak tersimpan: %v", withCohort["cohortName"])
+	}
+	if withCohort["organization"] != "Bank Nusantara" {
+		t.Errorf("nama instansi tidak tersimpan: %v", withCohort["organization"])
+	}
+
+	// Kelas tanpa instansi tetap aman (tidak menulis instansi kosong).
+	internal := certificateMetadata("Peserta Demo", path, issuedAt, &models.Cohort{ID: "c-2", Name: "Kelas Internal"})
+	if _, ok := internal["organization"]; ok {
+		t.Error("kelas tanpa instansi tidak boleh mengisi kolom instansi")
+	}
+}

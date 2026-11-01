@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -142,6 +144,34 @@ func KeyTryoutDetail(id string) string { return "tryout:detail:" + id }
 // dengan kategori sama tidak boleh berbagi cache.
 func KeyQuestionBank(tryoutID, bankKey string) string {
 	return "bank:" + tryoutID + ":" + bankKey
+}
+
+// KeyQuestionBankForOrgs adalah kunci cache bank soal dengan konteks instansi.
+//
+// Penyaringan soal per instansi (aturan §4.5) membuat isi bank berbeda antar
+// peserta, jadi kunci cache wajib memuat daftar instansinya. Instansi diurutkan
+// agar dua peserta dengan kelas yang sama — walau urutan hasil query berbeda —
+// berbagi entri cache yang sama.
+func KeyQuestionBankForOrgs(tryoutID, bankKey string, ownerOrgIDs []string) string {
+	key := KeyQuestionBank(tryoutID, bankKey)
+
+	unique := make([]string, 0, len(ownerOrgIDs))
+	seen := map[string]struct{}{}
+	for _, orgID := range ownerOrgIDs {
+		if orgID == "" {
+			continue
+		}
+		if _, ok := seen[orgID]; ok {
+			continue
+		}
+		seen[orgID] = struct{}{}
+		unique = append(unique, orgID)
+	}
+	if len(unique) == 0 {
+		return key
+	}
+	sort.Strings(unique)
+	return key + ":org:" + strings.Join(unique, ",")
 }
 
 // KeyLeaderboard adalah kunci cache leaderboard per tryout.

@@ -111,6 +111,7 @@ func run() error {
 		repository.NewAttemptRepository(db),
 		repository.NewEnrollmentRepository(db),
 		repository.NewLicenseRepository(db),
+		repository.NewCohortRepository(db),
 		cacheLayer,
 		cfg,
 	), repository.NewUserRepository(db))

@@ -44,6 +44,14 @@ type Deps struct {
 	LearningPath *service.LearningPathService
 	// Certificate menerbitkan & memverifikasi sertifikat jalur belajar (Fase 1).
 	Certificate *service.CertificateService
+	// Cohort mengelola kelas khusus: instansi, kohort, keanggotaan, kode
+	// undangan, dan laporan kelas (Fase 1).
+	Cohort *service.CohortService
+	// Outcome mengelola tracer study hasil seleksi: laporan peserta, bukti,
+	// verifikasi admin, tahapan seleksi, dan target KPI (Fase 2).
+	Outcome *service.OutcomeService
+	// KPI menghitung KPI kelulusan BUMN beserta ekspor & ringkasan publiknya.
+	KPI *service.KPIService
 }
 
 // decodeJSON membaca body JSON dan memvalidasi struct tujuan.

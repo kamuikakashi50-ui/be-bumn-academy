@@ -92,9 +92,12 @@ func (TryoutAnswer) TableName() string { return "tryout_answers" }
 // Tidak memakai `Base` karena tabel `attempts` tidak memiliki `updated_at`:
 // hasil tryout bersifat final dan tidak pernah diubah setelah tersimpan.
 type Attempt struct {
-	ID              string        `gorm:"column:id;type:uuid;primaryKey" json:"id"`
-	UserID          string        `gorm:"column:user_id;type:uuid;not null" json:"userId"`
-	TryoutID        string        `gorm:"column:tryout_id;not null" json:"tryoutId"`
+	ID       string `gorm:"column:id;type:uuid;primaryKey" json:"id"`
+	UserID   string `gorm:"column:user_id;type:uuid;not null" json:"userId"`
+	TryoutID string `gorm:"column:tryout_id;not null" json:"tryoutId"`
+	// CohortID diisi saat peserta memulai sesi dari keanggotaan kohort aktif,
+	// supaya laporan kelas bisa difilter tanpa menebak dari tanggal.
+	CohortID        *string       `gorm:"column:cohort_id" json:"cohortId,omitempty"`
 	Title           string        `gorm:"column:title;not null;default:''" json:"title"`
 	Score           int           `gorm:"column:score;not null;default:0" json:"score"`
 	Correct         int           `gorm:"column:correct;not null;default:0" json:"correct"`

@@ -41,6 +41,9 @@ type Question struct {
 	SectorKey string `gorm:"column:sector_key;not null;default:umum" json:"sectorKey"`
 	// CompanyKey menandai soal yang khusus untuk satu BUMN (opsional).
 	CompanyKey *string `gorm:"column:company_key" json:"companyKey,omitempty"`
+	// OwnerOrgID menandai soal milik satu instansi (kelas khusus).
+	// NULL berarti soal bersama yang boleh dipakai lintas kelas.
+	OwnerOrgID *string `gorm:"column:owner_org_id" json:"ownerOrgId,omitempty"`
 	// TestType adalah jenis tes seleksi BUMN (tkd, akhlaq, twk, bing, tkb, …).
 	TestType string `gorm:"column:test_type;not null;default:tkd" json:"testType"`
 	// PositionFamily adalah keluarga jabatan yang dituju soal (khusus TKB).
@@ -64,6 +67,43 @@ type Question struct {
 
 // TableName menetapkan nama tabel.
 func (Question) TableName() string { return "questions" }
+
+// VisibleToOrgs menentukan soal boleh dipakai oleh peserta dengan konteks instansi
+// tertentu.
+//
+// Soal tanpa pemilik (`owner_org_id` NULL) adalah soal bersama — mis. TKD umum —
+// dan boleh dipakai semua kelas. Soal ber-pemilik hanya boleh dipakai kelas
+// instansi pemiliknya, sehingga bank soal satu klien tidak bocor ke kelas klien
+// lain (aturan §4.5).
+//
+// `orgIDs` adalah instansi dari kohort aktif peserta: peserta yang mengikuti dua
+// kelas dari dua instansi berhak memakai soal kedua instansi itu. Daftar kosong
+// berarti peserta tidak berada di kelas instansi mana pun — hanya soal bersama
+// yang boleh dipakai (fail-closed).
+func (q Question) VisibleToOrgs(orgIDs []string) bool {
+	if q.OwnerOrgID == nil || *q.OwnerOrgID == "" {
+		return true
+	}
+	for _, orgID := range orgIDs {
+		if orgID != "" && *q.OwnerOrgID == orgID {
+			return true
+		}
+	}
+	return false
+}
+
+// FilterQuestionsForOrgs menyaring soal agar hanya berisi soal yang boleh dipakai
+// instansi-instansi tersebut. Urutan soal dipertahankan supaya susunan subtes tidak
+// berubah.
+func FilterQuestionsForOrgs(questions []Question, orgIDs []string) []Question {
+	out := make([]Question, 0, len(questions))
+	for _, question := range questions {
+		if question.VisibleToOrgs(orgIDs) {
+			out = append(out, question)
+		}
+	}
+	return out
+}
 
 // Tier adalah tingkat akses paket tryout.
 type Tier string

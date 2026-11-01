@@ -221,19 +221,94 @@ func (r *TryoutRepository) ListQuestionsByIDs(ctx context.Context, ids []string)
 // lain tidak boleh ikut terambil walau kategorinya sama. Hasilnya di-cache di
 // Redis oleh service karena bank soal jarang berubah sementara fungsi ini
 // dipanggil setiap kali peserta memulai sesi.
+//
+// Pemanggilan ini tidak membawa konteks instansi, jadi soal ber-`owner_org_id`
+// (milik satu klien) tidak ikut terambil — fail-closed. Sesi peserta memakai
+// `QuestionsByBanksForOrg` dengan instansi kohort peserta, agar soal kelasnya
+// sendiri tetap tersedia tanpa membocorkan soal klien lain.
 func (r *TryoutRepository) QuestionsByBanks(ctx context.Context, tryoutID string, banks []string) ([]models.Question, error) {
-	if tryoutID == "" || len(banks) == 0 {
+	return r.QuestionsByBanksForOrg(ctx, tryoutID, banks, "")
+}
+
+// QuestionsByBanksForOrg mengambil soal sebuah tryout dengan penyaringan
+// kepemilikan satu instansi (isolasi bank soal antar klien, aturan §4.5).
+func (r *TryoutRepository) QuestionsByBanksForOrg(
+	ctx context.Context,
+	tryoutID string,
+	banks []string,
+	ownerOrgID string,
+) ([]models.Question, error) {
+	orgIDs := []string{}
+	if ownerOrgID != "" {
+		orgIDs = append(orgIDs, ownerOrgID)
+	}
+	return r.QuestionsByBanksForOrgs(ctx, tryoutID, banks, orgIDs)
+}
+
+// QuestionsByBanksForOrgs mengambil soal sebuah tryout dengan penyaringan
+// kepemilikan instansi (isolasi bank soal antar klien, aturan §4.5).
+//
+// `ownerOrgIDs` kosong berarti peserta tidak berada di kelas instansi mana pun:
+// hanya soal bersama (`owner_org_id IS NULL`) yang boleh dipakai. Bila diisi, soal
+// bersama + soal milik instansi-instansi itu yang terambil.
+func (r *TryoutRepository) QuestionsByBanksForOrgs(
+	ctx context.Context,
+	tryoutID string,
+	banks []string,
+	ownerOrgIDs []string,
+) ([]models.Question, error) {
+	query := r.questionsByBanksQuery(ctx, tryoutID, banks, ownerOrgIDs)
+	if query == nil {
 		return nil, nil
 	}
+
 	var out []models.Question
-	err := r.db.WithContext(ctx).
-		Where("tryout_id = ? AND bank_key IN ? AND active = ?", tryoutID, banks, true).
+	err := query.
 		Order("bank_key ASC, position ASC, id ASC").
 		Find(&out).Error
 	if err != nil {
 		return nil, apperror.Internal(err, "Gagal memuat bank soal.")
 	}
 	return out, nil
+}
+
+// questionsByBanksQuery menyusun query soal sebuah tryout beserta penyaringan
+// kepemilikannya (nil bila tidak ada yang perlu diambil).
+//
+// Dipisah agar aturan isolasi bank soal antar klien bisa diuji tanpa database:
+// tanpa konteks instansi, soal ber-`owner_org_id` tidak ikut terambil
+// (fail-closed).
+func (r *TryoutRepository) questionsByBanksQuery(
+	ctx context.Context,
+	tryoutID string,
+	banks []string,
+	ownerOrgIDs []string,
+) *gorm.DB {
+	if tryoutID == "" || len(banks) == 0 {
+		return nil
+	}
+
+	query := r.db.WithContext(ctx).
+		Where("tryout_id = ? AND bank_key IN ? AND active = ?", tryoutID, banks, true)
+
+	// Instansi kosong dibuang agar tidak ada nilai kosong yang cocok dengan kolom
+	// apa pun; sisa daftar yang unik dipakai pada penyaringan.
+	orgIDs := make([]string, 0, len(ownerOrgIDs))
+	seen := map[string]struct{}{}
+	for _, orgID := range ownerOrgIDs {
+		if orgID == "" {
+			continue
+		}
+		if _, ok := seen[orgID]; ok {
+			continue
+		}
+		seen[orgID] = struct{}{}
+		orgIDs = append(orgIDs, orgID)
+	}
+	if len(orgIDs) == 0 {
+		return query.Where("owner_org_id IS NULL")
+	}
+	return query.Where("owner_org_id IS NULL OR owner_org_id IN ?", orgIDs)
 }
 
 // CountQuestionsByTryout menghitung jumlah soal aktif per (tryout, bank).

@@ -374,9 +374,45 @@ func (s *CertificateService) requiredQuizzes(ctx context.Context, path *models.L
 
 // issue menyimpan sertifikat peserta (nomor diambil dalam transaksi terkunci).
 func (s *CertificateService) issue(ctx context.Context, userID string, path *models.LearningPath) (*models.Certificate, error) {
-	participant := s.participantName(ctx, userID)
 	now := time.Now().UTC()
 
+	// Sertifikat peserta kelas khusus menyebut instansinya dan menautkan kohort,
+	// sehingga laporan kelas bisa menyebut sertifikat tanpa menebak dari tanggal.
+	cohort, err := s.access.PrimaryCohort(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	certificate := &models.Certificate{
+		IDBase:   models.IDBase{ID: models.NewID()},
+		UserID:   userID,
+		IssuedAt: now,
+		Metadata: certificateMetadata(s.participantName(ctx, userID), path, now, cohort),
+	}
+	if path.ID != "" {
+		pathID := path.ID
+		certificate.PathID = &pathID
+	}
+	if cohort != nil {
+		cohortID := cohort.ID
+		certificate.CohortID = &cohortID
+	}
+
+	return s.paths.CreateCertificateForUser(ctx, certificate, now.In(wib).Year())
+}
+
+// certificateMetadata menyusun metadata sertifikat (murni, agar bisa diuji tanpa
+// database).
+//
+// Metadata memuat data yang dibutuhkan PDF & laporan: nama peserta, judul jalur,
+// jenis tes, klaster, tanggal terbit, dan — bila peserta mengikuti kelas khusus —
+// nama kelas beserta instansinya.
+func certificateMetadata(
+	participant string,
+	path *models.LearningPath,
+	now time.Time,
+	cohort *models.Cohort,
+) models.JSONMap {
 	metadata := models.JSONMap{
 		"participantName": participant,
 		"pathTitle":       path.Title,
@@ -384,17 +420,13 @@ func (s *CertificateService) issue(ctx context.Context, userID string, path *mod
 		"sectorLabel":     bank.SectorLabel(path.SectorKey),
 		"issuedDate":      now.In(wib).Format("2006-01-02"),
 	}
-
-	pathID := path.ID
-	certificate := &models.Certificate{
-		IDBase:   models.IDBase{ID: models.NewID()},
-		UserID:   userID,
-		PathID:   &pathID,
-		IssuedAt: now,
-		Metadata: metadata,
+	if cohort != nil {
+		metadata["cohortName"] = cohort.Name
+		if cohort.Organization != nil {
+			metadata["organization"] = cohort.Organization.Name
+		}
 	}
-
-	return s.paths.CreateCertificateForUser(ctx, certificate, now.In(wib).Year())
+	return metadata
 }
 
 // view membentuk tampilan satu sertifikat peserta.

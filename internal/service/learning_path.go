@@ -69,16 +69,16 @@ func (s *LearningPathService) SetCertificateIssuer(issuer *CertificateService) {
 
 // Paths mengembalikan jalur belajar aktif yang bisa diakses peserta.
 //
-// Jalur yang produknya tidak dimiliki peserta tidak ditampilkan — konsisten
-// dengan daftar ruang kelas pada `/classroom`, sehingga peserta tidak melihat
-// kurikulum yang tidak bisa ia buka.
+// Jalur yang produknya tidak bisa dibuka peserta tidak ditampilkan — konsisten
+// dengan daftar ruang kelas pada `/classroom`. Produk yang muncul di kurikulum
+// kelas khusus ikut dihitung, sehingga peserta anggota kelas melihat jalur kelasnya.
 func (s *LearningPathService) Paths(ctx context.Context, userID string) ([]dto.PathSummaryView, error) {
 	rows, err := s.paths.ListPaths(ctx, repository.PathFilter{ActiveOnly: true})
 	if err != nil {
 		return nil, err
 	}
 
-	owned, err := s.access.OwnedProducts(ctx, userID)
+	owned, err := s.access.AccessibleProducts(ctx, userID)
 	if err != nil {
 		return nil, err
 	}

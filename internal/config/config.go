@@ -163,6 +163,10 @@ type BusinessConfig struct {
 	MidtransCoreBaseURL string
 	// FrontendBaseURL dipakai untuk URL pengalihan Snap (finish/unfinish/error).
 	FrontendBaseURL string
+	// KPIPublicMinGroupSize adalah ambang minimum jumlah peserta per kelompok
+	// sebelum angka hasil seleksi boleh tampil di halaman publik (Fase 2 §4.7).
+	// Kelompok yang lebih kecil disembunyikan agar individu tidak bisa dikenali.
+	KPIPublicMinGroupSize int
 }
 
 // MidtransEnabled menandakan kredensial Midtrans sudah tersedia.
@@ -268,6 +272,7 @@ func Load() (*Config, error) {
 			MidtransSnapBaseURL:      getEnv("MIDTRANS_SNAP_BASE_URL", ""),
 			MidtransCoreBaseURL:      getEnv("MIDTRANS_CORE_BASE_URL", ""),
 			FrontendBaseURL:          strings.TrimRight(getEnv("FRONTEND_BASE_URL", "http://localhost:3000"), "/"),
+			KPIPublicMinGroupSize:    getInt("KPI_PUBLIC_MIN_GROUP_SIZE", 10),
 		},
 		Seed: SeedConfig{
 			OnStart: getBool("SEED_ON_START", true),
@@ -312,6 +317,11 @@ func (c *Config) validate() error {
 	}
 	if c.Business.PassingThreshold < 0 || c.Business.PassingThreshold > 100 {
 		return fmt.Errorf("config: PASSING_THRESHOLD harus di antara 0-100")
+	}
+	if c.Business.KPIPublicMinGroupSize < 1 {
+		// Ambang 0/negatif berarti angka kelompok kecil boleh tampil ke publik —
+		// risiko identifikasi individu, jadi dikembalikan ke bawaan.
+		c.Business.KPIPublicMinGroupSize = 10
 	}
 	return nil
 }

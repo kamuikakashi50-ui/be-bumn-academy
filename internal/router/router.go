@@ -42,6 +42,12 @@ type Options struct {
 	LearningPathService *service.LearningPathService
 	// CertificateService melayani sertifikat jalur belajar & verifikasi publik.
 	CertificateService *service.CertificateService
+	// CohortService melayani kelas khusus (kohort) per instansi.
+	CohortService *service.CohortService
+	// OutcomeService melayani tracer study hasil seleksi & verifikasi bukti.
+	OutcomeService *service.OutcomeService
+	// KPIService melayani dasbor KPI kelulusan, ekspor, dan ringkasan publik.
+	KPIService *service.KPIService
 }
 
 // New menyusun router utama aplikasi.
@@ -62,6 +68,9 @@ func New(opts Options) http.Handler {
 		Compliance:   opts.ComplianceService,
 		LearningPath: opts.LearningPathService,
 		Certificate:  opts.CertificateService,
+		Cohort:       opts.CohortService,
+		Outcome:      opts.OutcomeService,
+		KPI:          opts.KPIService,
 	}
 
 	authHandler := handler.NewAuthHandler(deps)
@@ -77,6 +86,8 @@ func New(opts Options) http.Handler {
 	licenseHandler := handler.NewLicenseHandler(deps)
 	learningPathHandler := handler.NewLearningPathHandler(deps)
 	certificateHandler := handler.NewCertificateHandler(deps)
+	cohortHandler := handler.NewCohortHandler(deps)
+	outcomeHandler := handler.NewOutcomeHandler(deps)
 	healthHandler := handler.NewHealthHandler(opts.DB, opts.Cache, opts.Version)
 	mediaHandler := handler.NewMediaHandler(opts.Config.App.MediaDir)
 
@@ -122,6 +133,8 @@ func New(opts Options) http.Handler {
 			license:   licenseHandler,
 			path:      learningPathHandler,
 			cert:      certificateHandler,
+			cohort:    cohortHandler,
+			outcome:   outcomeHandler,
 			authMid:   authMiddleware,
 		})
 	})
@@ -153,6 +166,8 @@ type routeHandlers struct {
 	license   *handler.LicenseHandler
 	path      *handler.LearningPathHandler
 	cert      *handler.CertificateHandler
+	cohort    *handler.CohortHandler
+	outcome   *handler.OutcomeHandler
 	authMid   *middleware.Auth
 }
 
@@ -242,6 +257,18 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Get("/classroom/lessons/{id}/quiz", h.path.LessonQuiz)
 		r.Post("/classroom/lessons/{id}/quiz", h.path.SubmitQuiz)
 
+		// Kelas khusus (Fase 1): gabung lewat kode undangan & kelas yang diikuti.
+		r.Post("/cohorts/join", h.cohort.Join)
+		r.Get("/cohorts/me", h.cohort.MyCohorts)
+
+		// Tracer study hasil seleksi (Fase 2): peserta melapor, melihat riwayat,
+		// dan mengunggah bukti pengumuman.
+		r.Get("/outcomes/stages", h.outcome.OutcomeStages)
+		r.Get("/outcomes/me", h.outcome.MyOutcomes)
+		r.Post("/outcomes", h.outcome.ReportOutcome)
+		r.Patch("/outcomes/{id}", h.outcome.UpdateOutcome)
+		r.Delete("/outcomes/{id}", h.outcome.DeleteOutcome)
+		r.Post("/outcomes/{id}/evidence", h.outcome.SetOutcomeEvidence)
 		// Mesin tryout.
 		r.Post("/tryouts/{id}/sessions", h.tryout.StartSession)
 		r.Get("/tryout-sessions/{id}", h.tryout.GetSession)
@@ -267,6 +294,9 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 
 	// Insight agregat untuk halaman korporasi (publik, tanpa data pribadi).
 	r.Get("/insights/corporate", h.corporate.Insights)
+	// Ringkasan agregat hasil seleksi untuk halaman korporasi (Fase 2 §4.7):
+	// hanya kelompok dengan n ≥ ambang, tanpa identitas peserta.
+	r.Get("/insights/outcomes", h.outcome.PublicOutcomes)
 
 	// Media pembelajaran (video & e-book) — publik agar dapat dimuat langsung
 	// oleh elemen <video>/<iframe> di browser tanpa header khusus.
@@ -364,5 +394,42 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Get("/certificates/{id}/pdf", h.cert.AdminPDF)
 		r.Delete("/certificates/{id}", h.cert.Revoke)
 		r.Post("/certificates/{id}/restore", h.cert.Restore)
+
+		// Kelas khusus (Fase 1): instansi, kelas, anggota, kurikulum, kode
+		// undangan, dan jejak audit. Laporan kelas menyusul di langkah 6.
+		r.Get("/organizations", h.cohort.AdminOrganizations)
+		r.Post("/organizations", h.cohort.CreateOrganization)
+		r.Patch("/organizations/{id}", h.cohort.UpdateOrganization)
+		r.Get("/cohorts", h.cohort.AdminCohorts)
+		r.Post("/cohorts", h.cohort.CreateCohort)
+		r.Get("/cohorts/{id}", h.cohort.AdminCohort)
+		r.Patch("/cohorts/{id}", h.cohort.UpdateCohort)
+		r.Put("/cohorts/{id}/curriculum", h.cohort.SetCohortCurriculum)
+		r.Get("/cohorts/{id}/members", h.cohort.AdminCohortMembers)
+		r.Post("/cohorts/{id}/members", h.cohort.AddCohortMembers)
+		r.Patch("/cohorts/{id}/members/{userId}", h.cohort.UpdateCohortMember)
+		r.Delete("/cohorts/{id}/members/{userId}", h.cohort.RemoveCohortMember)
+		r.Get("/cohorts/{id}/invites", h.cohort.AdminCohortInvites)
+		r.Post("/cohorts/{id}/invites", h.cohort.CreateCohortInvite)
+		r.Delete("/cohorts/{id}/invites/{code}", h.cohort.RevokeCohortInvite)
+		r.Get("/cohorts/{id}/audit", h.cohort.AdminCohortAudit)
+		r.Get("/cohorts/{id}/report", h.cohort.AdminCohortReport)
+		r.Get("/cohorts/{id}/report.pdf", h.cohort.AdminCohortReportPDF)
+
+		// KPI kelulusan BUMN (Fase 2): tinjauan laporan hasil seleksi, verifikasi
+		// bukti, tahapan seleksi, target, dasbor, dan ekspor.
+		r.Get("/outcomes", h.outcome.AdminOutcomes)
+		r.Get("/outcomes/{id}/audit", h.outcome.AdminOutcomeAudits)
+		r.Post("/outcomes/{id}/verify", h.outcome.VerifyOutcome)
+		r.Post("/outcomes/{id}/reject", h.outcome.RejectOutcome)
+		r.Get("/selection-stages", h.outcome.AdminStages)
+		r.Patch("/selection-stages/{key}", h.outcome.UpdateStage)
+		r.Get("/kpi/targets", h.outcome.AdminTargets)
+		r.Post("/kpi/targets", h.outcome.CreateTarget)
+		r.Patch("/kpi/targets/{id}", h.outcome.UpdateTarget)
+		r.Delete("/kpi/targets/{id}", h.outcome.DeleteTarget)
+		r.Get("/kpi/bumn", h.outcome.KPI)
+		r.Get("/kpi/bumn/export.csv", h.outcome.KPIExportCSV)
+		r.Get("/kpi/bumn/export.pdf", h.outcome.KPIExportPDF)
 	})
 }

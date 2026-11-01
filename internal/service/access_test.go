@@ -15,7 +15,7 @@ import (
 // memerlukan data nyata; cabang kohort menyusul di langkah 5.
 
 func TestAccessCheckerMembukaMateriContohTanpaProduk(t *testing.T) {
-	checker := NewAccessChecker(nil)
+	checker := NewAccessChecker(nil, nil)
 	lesson := models.Lesson{ID: "les-1", ProductSlug: "kelas-intensif", IsPreview: true}
 
 	allowed, err := checker.CanOpenLesson(context.Background(), "user-tanpa-produk", lesson)
@@ -31,7 +31,7 @@ func TestAccessCheckerMembukaMateriContohTanpaProduk(t *testing.T) {
 }
 
 func TestAccessCheckerMenolakTanpaPesertaAtauProduk(t *testing.T) {
-	checker := NewAccessChecker(nil)
+	checker := NewAccessChecker(nil, nil)
 	ctx := context.Background()
 
 	allowed, err := checker.HasProduct(ctx, "", "kelas-intensif")
@@ -56,5 +56,33 @@ func TestAccessCheckerMenolakTanpaPesertaAtauProduk(t *testing.T) {
 	}
 	if len(owned) != 0 {
 		t.Errorf("daftar produk dimiliki untuk peserta kosong harus kosong: %v", owned)
+	}
+}
+
+// Uji cabang keanggotaan kohort: peserta boleh membuka materi kelas khususnya
+// tanpa membeli produk, tetapi modul di luar kurikulum kelasnya tetap ditolak.
+// Logika keputusannya murni (data hasil query sudah dimuat), sehingga bisa diuji
+// tanpa database.
+func TestLessonAllowedByCohort(t *testing.T) {
+	cohortModules := map[string]struct{}{"mod-kelas-1": {}, "mod-kelas-2": {}}
+
+	cases := []struct {
+		name   string
+		lesson models.Lesson
+		want   bool
+	}{
+		{"modul ada di kurikulum kelas", models.Lesson{ID: "les-1", ModuleID: "mod-kelas-1", ProductSlug: "kelas-intensif"}, true},
+		{"modul lain pada produk yang sama", models.Lesson{ID: "les-2", ModuleID: "mod-intensif-akhlak", ProductSlug: "kelas-intensif"}, false},
+		{"modul kosong tidak boleh lolos", models.Lesson{ID: "les-3", ModuleID: "", ProductSlug: "kelas-intensif"}, false},
+	}
+
+	for _, tc := range cases {
+		if got := lessonAllowedByCohort(tc.lesson, cohortModules); got != tc.want {
+			t.Errorf("%s: lessonAllowedByCohort = %v, harap %v", tc.name, got, tc.want)
+		}
+	}
+
+	if lessonAllowedByCohort(models.Lesson{ModuleID: "mod-kelas-1"}, nil) {
+		t.Error("tanpa keanggotaan kohort, modul apa pun tidak boleh dibuka lewat cabang ini")
 	}
 }

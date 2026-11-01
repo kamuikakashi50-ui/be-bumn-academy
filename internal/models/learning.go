@@ -31,6 +31,8 @@ type LiveSession struct {
 	Platform        string     `gorm:"column:platform;not null;default:Ruang live BUMN Academy" json:"platform"`
 	Note            *string    `gorm:"column:note" json:"note,omitempty"`
 	MeetingURL      *string    `gorm:"column:meeting_url" json:"meetingUrl,omitempty"`
+	// CohortID terisi untuk kelas live khusus kohort (NULL = kelas live umum).
+	CohortID *string `gorm:"column:cohort_id" json:"cohortId,omitempty"`
 	Timestamps
 }
 

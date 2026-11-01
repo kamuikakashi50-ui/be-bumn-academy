@@ -82,6 +82,23 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err := seedLearningPaths(ctx, db, data); err != nil {
 		return err
 	}
+	// Kelas khusus demo dibuat setelah modul ruang kelas & akun demo tersedia:
+	// kurikulumnya menunjuk modul, dan keanggotaannya menunjuk akun.
+	if err := seedCohorts(ctx, db, classroom, userIDs); err != nil {
+		return err
+	}
+	// KPI kelulusan (Fase 2): tahapan seleksi BUMN, laporan hasil seleksi demo,
+	// dan target KPI contoh. Dibuat setelah akun & kelas khusus tersedia karena
+	// laporan demo menunjuk pemiliknya dan (sebagian) kelas khususnya.
+	if err := seedSelectionStages(ctx, db); err != nil {
+		return err
+	}
+	if err := seedSelectionOutcomes(ctx, db, userIDs); err != nil {
+		return err
+	}
+	if err := seedKPITargets(ctx, db); err != nil {
+		return err
+	}
 	if err := seedLiveSessions(ctx, db); err != nil {
 		return err
 	}
@@ -105,8 +122,11 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 		"soal", len(data.Questions),
 		"tryout", len(data.Tryouts),
 		"modul", len(classroom.Modules),
+		"kelas_khusus", len(cohortDemoDefs),
 		"kohort_hr", len(hrCohortUsers),
 		"percobaan_hr", len(hrAttemptDefs),
+		"tahapan_seleksi", len(selectionStageDefs),
+		"hasil_seleksi", len(outcomeDemoDefs),
 	)
 	return nil
 }

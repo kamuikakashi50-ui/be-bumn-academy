@@ -143,6 +143,7 @@ bisa dijalankan dengan `migrate` CLI bila tim memakai tooling tersebut.
 | 013 | `question_licenses` — izin/hak pakai soal (scope, pemilik, masa berlaku, penggunaan komersial) |
 | 014 | keunikan soal: `questions.fingerprint` + `question_access_logs` |
 | 015 | `learning_paths`, `learning_path_steps`, `lesson_quizzes`, `lesson_quiz_questions`, `quiz_attempts`, `certificates`, `certificate_counters` (+ `course_modules.sector_key`/`test_type`, `lessons.is_preview`) |
+| 016 | kelas khusus: `organizations`, `cohorts`, `cohort_members`, `cohort_curriculum`, `cohort_invites`, `cohort_audit_logs` (+ `questions.owner_org_id`, `live_sessions.cohort_id`, `attempts.cohort_id`, FK `certificates.cohort_id`) |
 
 Data demo di-embed dari `internal/seed/data.json` yang dihasilkan dari modul mock
 front-end (45 soal, 5 paket tryout, 4 produk, 4 program, 3 voucher, 6 rekaman),
@@ -169,6 +170,15 @@ wajib, satu opsional) dan satu kuis `Kuis Deret & Pola` pada pelajaran
 Soal kuis dipilih dari `data.json` (bukan id yang ditulis tangan) supaya tetap
 stabil bila penamaan id soal berubah.
 
+`internal/seed/cohort.go` menambahkan **kelas khusus demo** (Fase 1 langkah 4):
+satu instansi `instansi-demo-nusantara` (klaster `jasa_keuangan`) dengan satu kelas
+`DEMO-BATCH-1` berstatus aktif (kuota 40), kurikulum tiga modul produk
+`kelas-intensif` (dua wajib, satu opsional), empat anggota (tiga peserta demo +
+`admin@bumnacademy.id` sebagai mentor), dan kode undangan `BATCH247`. Periode kelas
+dihitung relatif terhadap waktu seed dijalankan supaya kelas demo selalu berjalan;
+`used_count` kode undangan tidak pernah direset agar pemakaian saat demo tidak
+hilang.
+
 ### Isi paket `internal/seed`
 
 | Berkas | Isi |
@@ -177,11 +187,13 @@ stabil bila penamaan id soal berubah.
 | `data.go` | struktur JSON + `//go:embed data.json classroom.json` |
 | `learning.go` | jadwal kelas live (disimpan sebagai selisih jam dari waktu seed) & 6 rekaman kelas |
 | `learning_path.go` | jalur belajar & kuis demo Fase 1 (langkah jalur + susunan soal kuis) |
+| `cohort.go` | kelas khusus demo Fase 1: instansi, kelas aktif, kurikulum modul, anggota/mentor, kode undangan |
 | `hr.go` | kohort demo analitik HR: akun peserta lintas segmen, riwayat percobaan tryout (dengan rincian subtes), akses produk, dan progres ruang kelas |
 | `data.json` | program, kategori materi, produk, metode bayar, voucher, 45 definisi soal (digandakan per tryout saat disisipkan), 5 paket tryout, akun demo, enrollment demo |
 | `classroom.json` | 8 modul & 15 materi (6 video dari `media/lessons/` + 9 e-book yang dirender jadi PDF saat dibuka) |
 | `seed_test.go` | uji kontrak data: jumlah data, id unik, bank soal tiap subtes, produk wajib tiap paket, keberadaan berkas media, determinisme `stableID` |
 | `hr_test.go` | uji kontrak kohort analitik HR: sebaran program, akun kohort tidak menimpa akun inti, rentang enam bulan, peserta tanpa percobaan, validitas rotasi tryout & pola progres |
+| `cohort_test.go` | uji kontrak kelas khusus demo: modul kurikulum ada di `classroom.json`, akun anggota/mentor benar-benar dibuat, minimal satu modul wajib, format kode undangan (8 karakter, tanpa karakter ambigu) |
 
 Seed dipanggil otomatis saat start (`SEED_ON_START=true`) maupun manual lewat
 `make seed` / `go run ./cmd/seed`. Seluruh operasi idempoten (upsert), sehingga
@@ -280,6 +292,38 @@ sendiri (`started_at`/`finished_at`, `issued_at`); keduanya memakai
 `models.IDBase`. Uji `internal/repository/learning_path_schema_test.go` menjaga
 kolom model tetap sama dengan migrasi.
 
+### Kelas khusus & isolasi bank soal (migrasi 016)
+
+Fondasi kelas khusus (kohort) per instansi ada di migrasi `000016_cohorts`:
+
+| Tabel / kolom | Isi |
+| --- | --- |
+| `organizations` | instansi mitra (slug, klaster BUMN `sector_key`, PIC) |
+| `cohorts` | satu batch/kelas: status (`draft`/`aktif`/`selesai`/`arsip`), periode, `quota`, `access_until`, mentor |
+| `cohort_members` | keanggotaan (kunci gabungan `cohort_id` + `user_id`), peran (`peserta`/`mentor`/`admin_instansi`), status (`aktif`/`keluar`/`lulus`) |
+| `cohort_curriculum` | modul ruang kelas yang diikutkan ke kelas (wajib/opsional + urutan) |
+| `cohort_invites` | kode undangan 8 karakter berkuota, berkedaluwarsa, bisa dicabut |
+| `cohort_audit_logs` | jejak audit kelas (siapa mengundang/mengeluarkan siapa) |
+| `questions.owner_org_id` | soal milik satu instansi; `NULL` = soal bersama lintas kelas |
+| `live_sessions.cohort_id`, `attempts.cohort_id` | kelas live & riwayat percobaan milik sebuah kelas |
+| `certificates.cohort_id` | kini punya foreign key ke `cohorts` (dibuat tanpa FK di migrasi 015) |
+
+Kohort **tidak** memiliki materi sendiri: kurikulumnya menunjuk modul yang sudah
+ada, sehingga perbaikan materi berlaku untuk semua kelas sekaligus. Isolasi bank
+soal ditegakkan di jalur penyusunan sesi (`TryoutRepository.QuestionsByBanksForOrg`):
+tanpa konteks instansi hanya soal bersama (`owner_org_id IS NULL`) yang dipakai
+(fail-closed); dengan konteks instansi, soal bersama + soal milik instansi itu.
+Aturan kuota, kedaluwarsa kode undangan, dan masa akses ada di model murni
+(`internal/models/cohort.go`) sehingga bisa diuji tanpa database.
+
+> Status: **Fase 1 selesai** — jalur belajar, kuis, sertifikat, **kelas khusus
+> end-to-end** (instansi → kelas → kurikulum → undangan → keanggotaan → akses materi →
+> isolasi soal → jejak audit), **laporan kelas + PDF**, dan **UI-nya** (panel admin
+> `/admin/kohort` + halaman peserta `/dashboard/kelas-khusus`) dengan skrip uji
+> `npm run verify:kohort-ui` (25 pemeriksaan) di repo front-end. Utang teknis yang
+> tersisa: `timeLimit` kuis belum ditegakkan server-side dan `cohort_id` pada
+> `tryout_sessions` ditunda ke Fase 2.
+
 ### Akun demo
 
 | Role | Email | Kata sandi |
@@ -355,14 +399,66 @@ Semua endpoint berada di bawah `/api/v1`. Kolom **Akses**: `publik`, `peserta`
 
 Aturan progres: posisi dibatasi oleh durasi materi, persentase dihitung ulang di
 server, materi ditandai selesai otomatis pada >= 90% (atau eksplisit), dan status
-selesai bersifat menetap. Semua endpoint kelas memerlukan kepemilikan produk
-(`403` bila belum).
+selesai bersifat menetap. Akses materi diperiksa di satu tempat (`AccessChecker`):
+kepemilikan produk, **keanggotaan kelas khusus**, atau materi contoh — lihat bagian
+"Kelas khusus" di bawah.
+
+### Kelas khusus (kohort) — Fase 1
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| POST | `/cohorts/join` | peserta | gabung kelas dengan kode undangan (kedaluwarsa/kuota/pencabutan ditegakkan) |
+| GET | `/cohorts/me` | peserta | kelas khusus yang diikuti: instansi, mentor, periode, masa akses, kurikulum |
+| GET/POST | `/admin/organizations` | admin | daftar/tambah instansi mitra |
+| PATCH | `/admin/organizations/{id}` | admin | ubah data instansi (logo, PIC, klaster, status) |
+| GET/POST | `/admin/cohorts` | admin | daftar (filter instansi/status/klaster/`search`)/tambah kelas (opsional beserta kurikulum) |
+| GET/PATCH | `/admin/cohorts/{id}` | admin | detail (ringkasan + kurikulum)/ubah nama, periode, kuota, mentor, status |
+| PUT | `/admin/cohorts/{id}/curriculum` | admin | ganti daftar modul kelas + urutannya |
+| GET | `/admin/cohorts/{id}/members` | admin | daftar anggota (nama, email, peran, status) |
+| POST | `/admin/cohorts/{id}/members` | admin | tambah anggota: JSON (`userIds`/`emails`) **atau** berkas Excel/CSV (`file`) |
+| PATCH/DELETE | `/admin/cohorts/{id}/members/{userId}` | admin | ubah status keanggotaan (aktif/keluar/lulus)/keluarkan anggota |
+| GET/POST | `/admin/cohorts/{id}/invites` | admin | daftar/buat kode undangan (kode kosong → dibuat server, 8 karakter) |
+| DELETE | `/admin/cohorts/{id}/invites/{code}` | admin | cabut kode undangan |
+| GET | `/admin/cohorts/{id}/audit` | admin | jejak audit kelas (pembuatan kelas, kode, anggota, kurikulum, status) |
+| GET | `/admin/cohorts/{id}/report` | admin | laporan kelas: ringkasan, capaian per modul, profil subtes, prestasi & pendampingan, rincian peserta |
+| GET | `/admin/cohorts/{id}/report.pdf` | admin | laporan siap kirim ke instansi (PDF, `?download=1` memaksa unduhan) |
+
+Aturan kelas khusus:
+
+- **Akses materi per modul.** Peserta anggota kelas aktif boleh membuka modul yang
+  ada di kurikulum kelasnya **tanpa membeli produk**; modul lain pada produk yang
+  sama tetap ditolak (`FORBIDDEN`), dan daftar modul pada `/classroom/courses/{slug}`
+  disaring untuk anggota kelas. `GET /classroom` & `/learning/paths` juga
+  menampilkan produk yang muncul di kurikulum kelasnya.
+- **Masa akses.** `access_until` menutup materi kelas setelah lewat, tetapi riwayat
+  belajar & sertifikat tetap bisa dilihat.
+- **Kode undangan.** 8 karakter huruf besar+angka tanpa karakter ambigu (`0/O`,
+  `1/I`); kedaluwarsa/dicabut → `VALIDATION_ERROR`, kuota kode habis atau kuota kelas
+  penuh → `CONFLICT`; peserta yang sudah menjadi anggota tidak menambah `used_count`;
+  setiap pemakaian tercatat di `cohort_audit_logs`.
+- **Isolasi bank soal per instansi.** Soal ber-`owner_org_id` hanya dipakai kelas
+  instansi pemiliknya: `owner_org_id IS NULL OR owner_org_id IN (instansi kelas aktif
+  peserta)`, dengan kunci cache bank soal yang memuat daftar instansinya. Peserta di
+  luar kelas instansi tidak menerima soal itu.
+- **Riwayat percobaan per kelas.** `attempts.cohort_id` diisi saat peserta
+  mengumpulkan tryout (dari keanggotaan aktifnya) supaya laporan kelas bisa difilter
+  tanpa menebak dari tanggal.
+- **Kelas live kohort.** `GET /live-sessions` hanya menampilkan sesi ber-`cohort_id`
+  kepada anggota kelas itu; sesi umum tetap tampil untuk semua.
+- **Laporan kelas.** Semua angka laporan dihitung dari anggota kelas itu saja dan hanya
+  untuk anggota berperan `peserta` (mentor/staf tidak dihitung), sehingga laporan kelas
+  A tidak pernah memuat peserta kelas B. Peserta yang belum pernah berlatih tetap
+  muncul dengan catatan "Belum mulai" — bukan dihitung gagal. Kolom catatan
+  (`Prestasi` / `Lancar` / `Perlu pendampingan` / `Belum mulai`) berbasis angka yang
+  terlihat pada baris yang sama, dan laporan menegaskan bahwa angkanya data latihan,
+  **bukan** prediksi kelulusan seleksi BUMN. Sertifikat peserta kelas menyimpan
+  `cohort_id` + nama instansi pada metadata.
 
 ### Jalur belajar & kuis pelajaran (Fase 1)
 
 | Metode | Path | Akses | Keterangan |
 | --- | --- | --- | --- |
-| GET | `/learning/paths` | peserta | jalur belajar yang bisa diakses + progres ringkas (hanya jalur yang produknya dimiliki) |
+| GET | `/learning/paths` | peserta | jalur belajar yang bisa diakses + progres ringkas (produk yang dimiliki atau ada di kurikulum kelas khususnya) |
 | GET | `/learning/paths/{slug}` | peserta | detail jalur: langkah, progres per modul, langkah berikutnya, kelayakan sertifikat |
 | GET | `/classroom/lessons/{id}/quiz` | peserta | soal kuis pelajaran (**tanpa** kunci jawaban) + sisa percobaan |
 | POST | `/classroom/lessons/{id}/quiz` | peserta | kumpulkan jawaban → skor, lulus/tidak, pembahasan, sisa percobaan |

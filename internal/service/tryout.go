@@ -25,8 +25,11 @@ type TryoutService struct {
 	// licenses dipakai menegakkan izin soal: soal tanpa izin aktif tidak
 	// dikirim ke peserta (lihat `bankQuestions`).
 	licenses *repository.LicenseRepository
-	cache    *cache.Cache
-	cfg      *config.Config
+	// cohorts dipakai menyaring bank soal per instansi & mengisi
+	// `attempts.cohort_id` (opsional; nil berarti tanpa konteks kelas khusus).
+	cohorts *repository.CohortRepository
+	cache   *cache.Cache
+	cfg     *config.Config
 }
 
 // NewTryoutService membentuk service tryout.
@@ -36,6 +39,7 @@ func NewTryoutService(
 	attempts *repository.AttemptRepository,
 	enrollments *repository.EnrollmentRepository,
 	licenses *repository.LicenseRepository,
+	cohorts *repository.CohortRepository,
 	cacheLayer *cache.Cache,
 	cfg *config.Config,
 ) *TryoutService {
@@ -45,28 +49,67 @@ func NewTryoutService(
 		attempts:    attempts,
 		enrollments: enrollments,
 		licenses:    licenses,
+		cohorts:     cohorts,
 		cache:       cacheLayer,
 		cfg:         cfg,
 	}
+}
+
+// ownerOrgIDs mengembalikan instansi dari kelas khusus aktif peserta.
+//
+// Dipakai dua hal: menyaring bank soal per instansi (aturan §4.5) dan mengisi
+// `attempts.cohort_id` untuk laporan kelas. Tanpa repository kohort (mis. pada
+// paket uji), hasilnya kosong — hanya soal bersama yang dipakai.
+func (s *TryoutService) ownerOrgIDs(ctx context.Context, userID string) ([]string, error) {
+	if s.cohorts == nil || userID == "" {
+		return nil, nil
+	}
+	return s.cohorts.ActiveOwnerOrgIDs(ctx, userID, time.Now().UTC())
+}
+
+// primaryCohortID mengembalikan kelas khusus utama peserta (kelas dengan tanggal
+// mulai terbaru) untuk dicatat pada riwayat percobaan.
+func (s *TryoutService) primaryCohortID(ctx context.Context, userID string) (*string, error) {
+	if s.cohorts == nil || userID == "" {
+		return nil, nil
+	}
+
+	cohorts, err := s.cohorts.ActiveCohortsForUser(ctx, userID, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if len(cohorts) == 0 {
+		return nil, nil
+	}
+	cohortID := cohorts[0].ID
+	return &cohortID, nil
 }
 
 // bankQuestions mengambil soal sebuah bank MILIK satu tryout dari cache.
 //
 // Bank soal jarang berubah tetapi dibaca setiap kali peserta memulai sesi, jadi
 // ini titik caching paling berdampak saat tryout serentak. Kunci cache memuat
-// `tryoutID` karena soal sekarang dimiliki per paket tryout.
+// `tryoutID` (soal dimiliki per paket) dan daftar instansi peserta — karena
+// penyaringan isolasi soal membuat isi bank berbeda antar peserta.
 //
-// Dua penyaringan diterapkan sebelum soal dipakai sesi:
+// Tiga penyaringan diterapkan sebelum soal dipakai sesi:
 //
-//  1. Izin soal (bila `QUESTION_LICENSE_ENFORCE` menyala) — soal tanpa izin aktif
+//  1. Kepemilikan instansi (aturan §4.5) — soal ber-`owner_org_id` hanya dipakai
+//     kelas instansi pemiliknya; tanpa konteks instansi hanya soal bersama.
+//  2. Izin soal (bila `QUESTION_LICENSE_ENFORCE` menyala) — soal tanpa izin aktif
 //     tidak dikirim ke peserta. Ini penegakan "harus dipastikan izinnya".
-//  2. Grup varian — dari beberapa soal sekeluarga (mis. angka berbeda) hanya satu
+//  3. Grup varian — dari beberapa soal sekeluarga (mis. angka berbeda) hanya satu
 //     yang dipakai, dipilih secara deterministik per (tryout, bank, grup) agar
 //     seluruh peserta satu paket mengerjakan susunan yang sama.
-func (s *TryoutService) bankQuestions(ctx context.Context, tryoutID, bankKey string) ([]models.Question, error) {
-	return cache.Remember(ctx, s.cache, cache.KeyQuestionBank(tryoutID, bankKey), s.cfg.Redis.QuestionBankTTL,
+func (s *TryoutService) bankQuestions(
+	ctx context.Context,
+	tryoutID, bankKey string,
+	ownerOrgIDs []string,
+) ([]models.Question, error) {
+	key := cache.KeyQuestionBankForOrgs(tryoutID, bankKey, ownerOrgIDs)
+	return cache.Remember(ctx, s.cache, key, s.cfg.Redis.QuestionBankTTL,
 		func(ctx context.Context) ([]models.Question, error) {
-			questions, err := s.tryouts.QuestionsByBanks(ctx, tryoutID, []string{bankKey})
+			questions, err := s.tryouts.QuestionsByBanksForOrgs(ctx, tryoutID, []string{bankKey}, ownerOrgIDs)
 			if err != nil {
 				return nil, err
 			}
@@ -203,7 +246,7 @@ func (s *TryoutService) GetPackage(ctx context.Context, id string) (*models.Tryo
 // QuestionsForPackage memuat seluruh soal yang dipakai sebuah paket, di-key
 // oleh id soal. Bank soal diambil dari cache sehingga pemakaian berulang murah.
 func (s *TryoutService) QuestionsForPackage(ctx context.Context, pkg *models.TryoutPackage) (map[string]models.Question, error) {
-	return s.questionsForSession(ctx, pkg)
+	return s.questionsForSession(ctx, pkg, nil)
 }
 
 // subtestQuestionCount menghitung jumlah soal sebuah subtes dari jumlah soal per
@@ -364,7 +407,11 @@ func (s *TryoutService) StartSession(ctx context.Context, userID, tryoutID strin
 		return s.buildSessionView(ctx, existing, pkg)
 	}
 
-	order, err := s.buildQuestionOrder(ctx, *pkg)
+	ownerOrgIDs, err := s.ownerOrgIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	order, err := s.buildQuestionOrder(ctx, *pkg, ownerOrgIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -464,12 +511,12 @@ func (s *TryoutService) checkAccess(ctx context.Context, userID string, pkg mode
 //
 // Urutan mengikuti urutan bank pada definisi subtes, lalu urutan posisi soal di
 // dalam bank (kolom `position`), sama seperti perilaku front-end.
-func (s *TryoutService) buildQuestionOrder(ctx context.Context, pkg models.TryoutPackage) ([][]string, error) {
+func (s *TryoutService) buildQuestionOrder(ctx context.Context, pkg models.TryoutPackage, ownerOrgIDs []string) ([][]string, error) {
 	order := make([][]string, len(pkg.Subtests))
 	for i, subtest := range pkg.Subtests {
 		ids := make([]string, 0, 16)
 		for _, bankKey := range subtest.Banks {
-			questions, err := s.bankQuestions(ctx, pkg.ID, bankKey)
+			questions, err := s.bankQuestions(ctx, pkg.ID, bankKey, ownerOrgIDs)
 			if err != nil {
 				return nil, err
 			}
@@ -483,11 +530,11 @@ func (s *TryoutService) buildQuestionOrder(ctx context.Context, pkg models.Tryou
 }
 
 // questionsForSession memuat seluruh soal yang dipakai paket ini, di-key oleh id.
-func (s *TryoutService) questionsForSession(ctx context.Context, pkg *models.TryoutPackage) (map[string]models.Question, error) {
+func (s *TryoutService) questionsForSession(ctx context.Context, pkg *models.TryoutPackage, ownerOrgIDs []string) (map[string]models.Question, error) {
 	out := map[string]models.Question{}
 	for _, subtest := range pkg.Subtests {
 		for _, bankKey := range subtest.Banks {
-			questions, err := s.bankQuestions(ctx, pkg.ID, bankKey)
+			questions, err := s.bankQuestions(ctx, pkg.ID, bankKey, ownerOrgIDs)
 			if err != nil {
 				return nil, err
 			}
@@ -517,7 +564,11 @@ func (s *TryoutService) buildSessionView(
 		answerByQuestion[answer.QuestionID] = answer
 	}
 
-	questions, err := s.questionsForSession(ctx, pkg)
+	ownerOrgIDs, err := s.ownerOrgIDs(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+	questions, err := s.questionsForSession(ctx, pkg, ownerOrgIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -828,7 +879,17 @@ func (s *TryoutService) submitAttempt(
 	session *models.TryoutSession,
 	pkg *models.TryoutPackage,
 ) (*models.Attempt, error) {
-	questions, err := s.questionsForSession(ctx, pkg)
+	ownerOrgIDs, err := s.ownerOrgIDs(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+	// Kelas khusus peserta dicatat pada riwayat percobaan supaya laporan kelas
+	// (langkah 6) bisa memfilter tanpa menebak dari tanggal.
+	cohortID, err := s.primaryCohortID(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+	questions, err := s.questionsForSession(ctx, pkg, ownerOrgIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -881,6 +942,7 @@ func (s *TryoutService) submitAttempt(
 		return &models.Attempt{
 			UserID:          locked.UserID,
 			TryoutID:        locked.TryoutID,
+			CohortID:        cohortID,
 			Title:           pkg.Title,
 			Score:           score,
 			Correct:         totalCorrect,
@@ -937,7 +999,11 @@ func (s *TryoutService) buildResultView(
 		}
 	}
 
-	questions, err := s.questionsForSession(ctx, pkg)
+	ownerOrgIDs, err := s.ownerOrgIDs(ctx, session.UserID)
+	if err != nil {
+		return nil, err
+	}
+	questions, err := s.questionsForSession(ctx, pkg, ownerOrgIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -1034,7 +1100,11 @@ func (s *TryoutService) GetAttempt(ctx context.Context, userID, attemptID string
 		return nil, err
 	}
 	if session == nil {
-		order, orderErr := s.buildQuestionOrder(ctx, *pkg)
+		ownerOrgIDs, orgErr := s.ownerOrgIDs(ctx, userID)
+		if orgErr != nil {
+			return nil, orgErr
+		}
+		order, orderErr := s.buildQuestionOrder(ctx, *pkg, ownerOrgIDs)
 		if orderErr != nil {
 			return nil, orderErr
 		}

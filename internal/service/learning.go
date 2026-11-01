@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"github.com/bumn-academy/be-bumn-academy/internal/cache"
 	"github.com/bumn-academy/be-bumn-academy/internal/config"
@@ -18,8 +19,10 @@ type LearningService struct {
 	enrollments *repository.EnrollmentRepository
 	tryouts     *TryoutService
 	classroom   *ClassroomService
-	cache       *cache.Cache
-	cfg         *config.Config
+	// cohorts dipakai menyaring jadwal kelas live khusus kohort (opsional).
+	cohorts *repository.CohortRepository
+	cache   *cache.Cache
+	cfg     *config.Config
 }
 
 // NewLearningService membentuk service ruang belajar.
@@ -29,6 +32,7 @@ func NewLearningService(
 	enrollments *repository.EnrollmentRepository,
 	tryouts *TryoutService,
 	classroom *ClassroomService,
+	cohorts *repository.CohortRepository,
 	cacheLayer *cache.Cache,
 	cfg *config.Config,
 ) *LearningService {
@@ -38,12 +42,17 @@ func NewLearningService(
 		enrollments: enrollments,
 		tryouts:     tryouts,
 		classroom:   classroom,
+		cohorts:     cohorts,
 		cache:       cacheLayer,
 		cfg:         cfg,
 	}
 }
 
 // LiveSessions mengambil jadwal kelas live beserta status pengingat peserta.
+//
+// Sesi live kelas khusus (`live_sessions.cohort_id` terisi) hanya ditampilkan
+// untuk anggota kelas itu dan admin; tamu & peserta di luar kelas hanya melihat
+// kelas live umum (§4.6).
 func (s *LearningService) LiveSessions(ctx context.Context, userID string, upcomingOnly bool) ([]dto.LiveSessionView, error) {
 	rows, err := cache.Remember(ctx, s.cache, cache.KeyLiveSessions(), s.cfg.Redis.CatalogTTL,
 		func(ctx context.Context) ([]models.LiveSession, error) {
@@ -64,12 +73,51 @@ func (s *LearningService) LiveSessions(ctx context.Context, userID string, upcom
 		}
 	}
 
+	rows, err = s.filterLiveSessionsByCohort(ctx, userID, rows)
+	if err != nil {
+		return nil, err
+	}
+
 	out := make([]dto.LiveSessionView, 0, len(rows))
 	for _, row := range rows {
 		if upcomingOnly && row.Status == models.LiveEnded {
 			continue
 		}
 		out = append(out, toLiveSessionView(row, reminded[row.ID]))
+	}
+	return out, nil
+}
+
+// filterLiveSessionsByCohort menyaring jadwal kelas live khusus kohort.
+//
+// Sesi umum (`cohort_id` NULL) selalu tampil. Sesi kelas khusus hanya tampil bila
+// peserta anggota aktif kelas itu; tamu (tanpa akun) tidak melihatnya. Daftar
+// selalu disalin agar tidak mengubah isi cache yang dipakai bersama.
+func (s *LearningService) filterLiveSessionsByCohort(
+	ctx context.Context,
+	userID string,
+	rows []models.LiveSession,
+) ([]models.LiveSession, error) {
+	allowed := map[string]struct{}{}
+	if userID != "" && s.cohorts != nil {
+		cohorts, err := s.cohorts.ActiveCohortsForUser(ctx, userID, time.Now().UTC())
+		if err != nil {
+			return nil, err
+		}
+		for _, cohort := range cohorts {
+			allowed[cohort.ID] = struct{}{}
+		}
+	}
+
+	out := make([]models.LiveSession, 0, len(rows))
+	for _, row := range rows {
+		if row.CohortID == nil {
+			out = append(out, row)
+			continue
+		}
+		if _, ok := allowed[*row.CohortID]; ok {
+			out = append(out, row)
+		}
 	}
 	return out, nil
 }
@@ -106,9 +154,18 @@ func (s *LearningService) Dashboard(ctx context.Context, userID string) (*dto.Da
 		return nil, err
 	}
 
-	slugs, err := s.enrollments.OwnedSlugs(ctx, userID)
-	if err != nil {
-		return nil, err
+	// Produk yang boleh dibuka: dimiliki atau lewat keanggotaan kelas khusus.
+	slugs := []string{}
+	if s.classroom != nil {
+		slugs, err = s.classroom.AccessibleProductSlugs(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		slugs, err = s.enrollments.OwnedSlugs(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	trend, err := s.tryouts.ScoreTrend(ctx, userID, 8)
