@@ -940,7 +940,44 @@ func (s *AdminService) DeleteVoucher(ctx context.Context, code string) error {
 //
 // Pengiriman nyata dilakukan worker terpisah; di sini kita hanya menyiapkan
 // daftar penerima dan mencatat log agar tidak terkirim dobel.
+// Jeda minimum antar pengingat berkala yang sama (Fase 2 §4.5).
+//
+// Aturan aslinya "maksimal 1×/14 hari **per peserta**"; `broadcast_logs` hanya
+// mencatat jumlah penerima (bukan per peserta), jadi jeda ditegakkan di **level
+// kampanye**: audience pengingat yang sama tidak boleh dikirim ulang sebelum 14
+// hari. Dalam praktik ini mencegah spam karena admin mengirim satu kampanye per
+// segmen — bila nanti butuh per peserta, tambahkan tabel pengiriman per penerima.
+const broadcastReminderCooldown = 14 * 24 * time.Hour
+
+// broadcastReminderAudiences adalah audience yang dibatasi jeda pengiriman.
+var broadcastReminderAudiences = map[string]struct{}{
+	"outcome_pending": {},
+}
+
+// broadcastCooldownActive memeriksa apakah jeda pengiriman masih berjalan.
+func broadcastCooldownActive(last *time.Time, now time.Time, window time.Duration) bool {
+	if last == nil {
+		return false
+	}
+	return now.Sub(*last) < window
+}
+
+// Broadcast mengirim pesan ke satu segmen peserta dan mencatatnya.
+//
+// Segmen pengingat berkala (mis. `outcome_pending`) dibatasi jeda 14 hari agar
+// peserta tidak menerima pesan berulang (§4.5).
 func (s *AdminService) Broadcast(ctx context.Context, adminID string, req dto.BroadcastRequest) (*dto.BroadcastResponse, error) {
+	if _, isReminder := broadcastReminderAudiences[req.Audience]; isReminder {
+		last, err := s.learning.LastBroadcastAt(ctx, req.Audience)
+		if err != nil {
+			return nil, err
+		}
+		if broadcastCooldownActive(last, time.Now().UTC(), broadcastReminderCooldown) {
+			return nil, apperror.Conflict(
+				"Pengingat untuk segmen ini baru dikirim. Tunggu 14 hari sebelum mengirim ulang.")
+		}
+	}
+
 	recipients, err := s.enrollments.UserIDsByAudience(ctx, req.Audience)
 	if err != nil {
 		return nil, err

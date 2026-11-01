@@ -164,6 +164,25 @@ func (r *LearningRepository) ListBroadcastLogs(ctx context.Context, limit int) (
 	return out, nil
 }
 
+// LastBroadcastAt mengembalikan waktu broadcast terakhir untuk satu audience.
+//
+// Dipakai menegakkan jeda pengingat berkala (Fase 2 §4.5): tanpa nilai balik ini,
+// admin bisa mengirim pengingat tracer study berulang ke peserta yang sama.
+func (r *LearningRepository) LastBroadcastAt(ctx context.Context, audience string) (*time.Time, error) {
+	var row models.BroadcastLog
+	err := r.db.WithContext(ctx).
+		Where("audience = ?", audience).
+		Order("created_at DESC").
+		First(&row).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, apperror.Internal(err, "Gagal memeriksa riwayat broadcast.")
+	}
+	return &row.CreatedAt, nil
+}
+
 // CreateNotificationLog mencatat notifikasi transaksi.
 func (r *LearningRepository) CreateNotificationLog(ctx context.Context, log *models.NotificationLog) error {
 	if err := r.db.WithContext(ctx).Create(log).Error; err != nil {

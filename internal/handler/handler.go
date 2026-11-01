@@ -52,6 +52,9 @@ type Deps struct {
 	Outcome *service.OutcomeService
 	// KPI menghitung KPI kelulusan BUMN beserta ekspor & ringkasan publiknya.
 	KPI *service.KPIService
+	// Competency mengelola kamus kompetensi, standar jabatan, profil peserta,
+	// dan matriks kompetensi (Fase 3).
+	Competency *service.CompetencyService
 }
 
 // decodeJSON membaca body JSON dan memvalidasi struct tujuan.

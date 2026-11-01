@@ -48,6 +48,9 @@ type Options struct {
 	OutcomeService *service.OutcomeService
 	// KPIService melayani dasbor KPI kelulusan, ekspor, dan ringkasan publik.
 	KPIService *service.KPIService
+	// CompetencyService melayani kamus kompetensi, standar jabatan, profil
+	// peserta, dan matriks kompetensi (Fase 3).
+	CompetencyService *service.CompetencyService
 }
 
 // New menyusun router utama aplikasi.
@@ -71,6 +74,7 @@ func New(opts Options) http.Handler {
 		Cohort:       opts.CohortService,
 		Outcome:      opts.OutcomeService,
 		KPI:          opts.KPIService,
+		Competency:   opts.CompetencyService,
 	}
 
 	authHandler := handler.NewAuthHandler(deps)
@@ -88,6 +92,7 @@ func New(opts Options) http.Handler {
 	certificateHandler := handler.NewCertificateHandler(deps)
 	cohortHandler := handler.NewCohortHandler(deps)
 	outcomeHandler := handler.NewOutcomeHandler(deps)
+	competencyHandler := handler.NewCompetencyHandler(deps)
 	healthHandler := handler.NewHealthHandler(opts.DB, opts.Cache, opts.Version)
 	mediaHandler := handler.NewMediaHandler(opts.Config.App.MediaDir)
 
@@ -119,23 +124,24 @@ func New(opts Options) http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(middleware.RateLimit(opts.Limiter))
 		registerRoutes(r, routeHandlers{
-			auth:      authHandler,
-			catalog:   catalogHandler,
-			billing:   billingHandler,
-			tryout:    tryoutHandler,
-			learning:  learningHandler,
-			classroom: classroomHandler,
-			corporate: corporateHandler,
-			media:     mediaHandler,
-			admin:     adminHandler,
-			hr:        hrHandler,
-			ai:        aiHandler,
-			license:   licenseHandler,
-			path:      learningPathHandler,
-			cert:      certificateHandler,
-			cohort:    cohortHandler,
-			outcome:   outcomeHandler,
-			authMid:   authMiddleware,
+			auth:       authHandler,
+			catalog:    catalogHandler,
+			billing:    billingHandler,
+			tryout:     tryoutHandler,
+			learning:   learningHandler,
+			classroom:  classroomHandler,
+			corporate:  corporateHandler,
+			media:      mediaHandler,
+			admin:      adminHandler,
+			hr:         hrHandler,
+			ai:         aiHandler,
+			license:    licenseHandler,
+			path:       learningPathHandler,
+			cert:       certificateHandler,
+			cohort:     cohortHandler,
+			outcome:    outcomeHandler,
+			competency: competencyHandler,
+			authMid:    authMiddleware,
 		})
 	})
 
@@ -152,23 +158,24 @@ func New(opts Options) http.Handler {
 
 // routeHandlers mengumpulkan handler agar pemanggilan registerRoutes ringkas.
 type routeHandlers struct {
-	auth      *handler.AuthHandler
-	catalog   *handler.CatalogHandler
-	billing   *handler.BillingHandler
-	tryout    *handler.TryoutHandler
-	learning  *handler.LearningHandler
-	classroom *handler.ClassroomHandler
-	corporate *handler.CorporateHandler
-	media     *handler.MediaHandler
-	admin     *handler.AdminHandler
-	hr        *handler.HRHandler
-	ai        *handler.AIHandler
-	license   *handler.LicenseHandler
-	path      *handler.LearningPathHandler
-	cert      *handler.CertificateHandler
-	cohort    *handler.CohortHandler
-	outcome   *handler.OutcomeHandler
-	authMid   *middleware.Auth
+	auth       *handler.AuthHandler
+	catalog    *handler.CatalogHandler
+	billing    *handler.BillingHandler
+	tryout     *handler.TryoutHandler
+	learning   *handler.LearningHandler
+	classroom  *handler.ClassroomHandler
+	corporate  *handler.CorporateHandler
+	media      *handler.MediaHandler
+	admin      *handler.AdminHandler
+	hr         *handler.HRHandler
+	ai         *handler.AIHandler
+	license    *handler.LicenseHandler
+	path       *handler.LearningPathHandler
+	cert       *handler.CertificateHandler
+	cohort     *handler.CohortHandler
+	outcome    *handler.OutcomeHandler
+	competency *handler.CompetencyHandler
+	authMid    *middleware.Auth
 }
 
 func writeJSON(w http.ResponseWriter, status int, body string) {
@@ -269,6 +276,10 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Patch("/outcomes/{id}", h.outcome.UpdateOutcome)
 		r.Delete("/outcomes/{id}", h.outcome.DeleteOutcome)
 		r.Post("/outcomes/{id}/evidence", h.outcome.SetOutcomeEvidence)
+
+		// Kompetensi peserta (Fase 3): profil kompetensi + gap, dan penilaian diri.
+		r.Get("/me/competencies", h.competency.MyCompetencies)
+		r.Post("/me/competencies/self-assessment", h.competency.SelfAssess)
 		// Mesin tryout.
 		r.Post("/tryouts/{id}/sessions", h.tryout.StartSession)
 		r.Get("/tryout-sessions/{id}", h.tryout.GetSession)
@@ -431,5 +442,14 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Get("/kpi/bumn", h.outcome.KPI)
 		r.Get("/kpi/bumn/export.csv", h.outcome.KPIExportCSV)
 		r.Get("/kpi/bumn/export.pdf", h.outcome.KPIExportPDF)
+
+		// Kompetensi (Fase 3): kamus & level, standar jabatan, matriks peserta.
+		r.Get("/competencies", h.competency.AdminFramework)
+		r.Post("/competencies", h.competency.UpsertCompetency)
+		r.Post("/competencies/{code}/levels", h.competency.UpsertLevel)
+		r.Get("/positions/{family}/requirements", h.competency.AdminRequirements)
+		r.Post("/positions/{family}/requirements", h.competency.UpsertRequirement)
+		r.Delete("/positions/{family}/requirements/{code}", h.competency.DeleteRequirement)
+		r.Get("/competency-matrix", h.competency.AdminMatrix)
 	})
 }

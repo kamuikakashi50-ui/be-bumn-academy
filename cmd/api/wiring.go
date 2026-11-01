@@ -41,6 +41,9 @@ func buildRouter(
 	// Repository KPI kelulusan (Fase 2): tahapan seleksi, laporan hasil seleksi,
 	// jejak audit verifikasi, target KPI, dan query agregatnya.
 	outcomeRepo := repository.NewOutcomeRepository(db)
+	// Repository kompetensi (Fase 3): kamus, standar jabatan, penilaian peserta,
+	// dan pemetaan kategori bank soal.
+	competencyRepo := repository.NewCompetencyRepository(db)
 	licenses := repository.NewLicenseRepository(db)
 	fingerprints := repository.NewComplianceRepository(db)
 	learningPaths := repository.NewLearningPathRepository(db)
@@ -83,6 +86,8 @@ func buildRouter(
 	// perhitungan KPI, ekspor, dan ringkasan publiknya.
 	outcomeService := service.NewOutcomeService(outcomeRepo, cohortRepo, cfg)
 	kpiService := service.NewKPIService(outcomeRepo, cfg)
+	// Kompetensi (Fase 3): kamus + standar jabatan + profil peserta (proksi tryout).
+	competencyService := service.NewCompetencyService(competencyRepo)
 	// Sertifikat diterbitkan otomatis saat peserta menyelesaikan langkah wajib
 	// (progres materi) atau lulus kuis jalur — dua titik, satu aturan.
 	learningPathService.SetCertificateIssuer(certificateService)
@@ -128,5 +133,6 @@ func buildRouter(
 		CohortService:       cohortService,
 		OutcomeService:      outcomeService,
 		KPIService:          kpiService,
+		CompetencyService:   competencyService,
 	})
 }

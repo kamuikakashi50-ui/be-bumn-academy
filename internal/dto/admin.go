@@ -239,7 +239,7 @@ type AdminOrderView struct {
 
 // BroadcastRequest adalah payload broadcast WhatsApp.
 type BroadcastRequest struct {
-	Audience string `json:"audience" validate:"required,oneof=all enrolled paid pending"`
+	Audience string `json:"audience" validate:"required,oneof=all enrolled paid pending outcome_pending"`
 	Message  string `json:"message" validate:"required,min=5,max=1000"`
 }
 

@@ -458,6 +458,127 @@ req -o /dev/null -X PATCH "$API/admin/cohorts/$COHORT_ID" -H "$ADMIN_AUTH" -d '{
 ARCHIVED=$(req "$API/cohorts/me" -H "$KOHORT_AUTH" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)["data"]))')
 check "kelas diarsipkan tidak lagi aktif bagi peserta" "$ARCHIVED" "0"
 
+say "KPI kelulusan BUMN (Fase 2)"
+YEAR=$(date +%Y)
+
+# 1. Peserta melaporkan hasil seleksi → source self_reported (belum terverifikasi).
+OUTCOME=$(req -X POST "$API/outcomes" -H "$AUTH" \
+  -d "{\"stageKey\":\"tahap1_tkd\",\"companyName\":\"Bank Nusantara Smoke\",\"companySector\":\"jasa_keuangan\",\"position\":\"Analis Kredit\",\"positionFamily\":\"keuangan\",\"selectionYear\":$YEAR,\"status\":\"lolos\",\"announcedAt\":\"$YEAR-05-12\"}")
+OUTCOME_ID=$(echo "$OUTCOME" | jq1 "['id']")
+OUTCOME_SRC=$(echo "$OUTCOME" | jq1 "['source']")
+OUTCOME_VERIFIED=$(echo "$OUTCOME" | jq1 "['verified']")
+check "peserta melaporkan hasil seleksi (source/verified)" "$OUTCOME_SRC $OUTCOME_VERIFIED" "self_reported False"
+
+# 2. Laporan ganda pada kombinasi (tahun, tahap, instansi) → CONFLICT.
+DUP=$(req -X POST "$API/outcomes" -H "$AUTH" \
+  -d "{\"stageKey\":\"tahap1_tkd\",\"companyName\":\"Bank Nusantara Smoke\",\"companySector\":\"jasa_keuangan\",\"selectionYear\":$YEAR,\"status\":\"lolos\"}" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "laporan ganda pada kombinasi sama ditolak" "$DUP" "CONFLICT"
+
+# 3. Admin memverifikasi bukti → source admin_verified & verifiedAt terisi.
+VERIFIED=$(req -X POST "$API/admin/outcomes/$OUTCOME_ID/verify" -H "$ADMIN_AUTH" -d '{}' \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["source"], bool(d.get("verifiedAt")))')
+check "admin memverifikasi laporan (source/verifiedAt)" "$VERIFIED" "admin_verified True"
+
+# 4. Dasbor KPI menampilkan angka dengan n yang benar + funnel terisi.
+KPI=$(req "$API/admin/kpi/bumn?year=$YEAR" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["summary"]["reported"] >= 1, d["summary"]["finalPassRate"]["verified"]["n"] >= 1, len(d["funnel"]) >= 1, len(d["notes"]) >= 1)')
+check "dasbor KPI memuat n, funnel, dan catatan" "$KPI" "True True True True"
+
+# 5. Ekspor CSV memuat kolom n/verified/reported (level terpisah).
+CSV=/tmp/kpi-smoke.csv
+CSV_STATUS=$(curl -s -m 20 -o "$CSV" -w '%{http_code}' "$API/admin/kpi/bumn/export.csv?year=$YEAR" -H "$ADMIN_AUTH")
+check "unduh ekspor CSV KPI (status)" "$CSV_STATUS" "200"
+CSV_HEAD=$(head -n 1 "$CSV")
+if echo "$CSV_HEAD" | grep -q 'n' && grep -q 'verified' "$CSV" && grep -q 'reported' "$CSV"; then
+  ok "CSV KPI memuat kolom n/verified/reported"
+else
+  bad "CSV KPI tidak memuat kolom yang diharapkan"
+fi
+
+# 6. Ekspor PDF berhasil dan sah.
+PDF=/tmp/kpi-smoke.pdf
+PDF_STATUS=$(curl -s -m 20 -o "$PDF" -w '%{http_code}' "$API/admin/kpi/bumn/export.pdf?year=$YEAR" -H "$ADMIN_AUTH")
+check "unduh laporan PDF KPI (status)" "$PDF_STATUS" "200"
+if head -c 5 "$PDF" | grep -q '%PDF-'; then
+  ok "berkas laporan KPI sah (PDF)"
+else
+  bad "berkas laporan KPI bukan PDF"
+fi
+rm -f "$CSV" "$PDF"
+
+# 7. Endpoint publik: tanpa identitas peserta & hanya kelompok n ≥ ambang.
+PUBLIC=$(req "$API/insights/outcomes?year=$YEAR")
+if echo "$PUBLIC" | grep -q 'Peserta Smoke'; then
+  bad "endpoint publik memuat nama peserta"
+else
+  ok "endpoint publik tidak memuat nama peserta"
+fi
+PUBLIC_OK=$(echo "$PUBLIC" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["minGroupSize"] >= 1, all(g["n"] >= d["minGroupSize"] for g in d["bySector"]))')
+check "kelompok kecil disembunyikan (n ≥ ambang)" "$PUBLIC_OK" "True True"
+
+# 8. Otorisasi: tanpa token UNAUTHORIZED; peserta (bukan admin) FORBIDDEN.
+UNAUTH_KPI=$(req "$API/admin/kpi/bumn" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "dasbor KPI butuh token" "$UNAUTH_KPI" "UNAUTHORIZED"
+FORBIDDEN_KPI=$(req "$API/admin/kpi/bumn" -H "$AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "peserta tidak bisa membuka dasbor KPI" "$FORBIDDEN_KPI" "FORBIDDEN"
+
+# 9. Pengingat tracer study: audience `outcome_pending` + jeda 14 hari (§4.5).
+TRACER_FIRST=$(req -X POST "$API/admin/broadcast" -H "$ADMIN_AUTH" \
+  -d '{"audience":"outcome_pending","message":"Lengkapi laporan hasil seleksimu di dashboard."}')
+TRACER_CODE=$(echo "$TRACER_FIRST" | python3 -c 'import sys,json;d=json.load(sys.stdin);print("ok" if d.get("success") else d.get("error",{}).get("code",""))')
+if [ "$TRACER_CODE" = "ok" ]; then
+  TRACER=$(echo "$TRACER_FIRST" | jq1 "['recipients']")
+  [ "${TRACER:-0}" -ge 1 ] 2>/dev/null && ok "audience outcome_pending mengirim ke $TRACER penerima" || bad "audience outcome_pending kosong ($TRACER)"
+elif [ "$TRACER_CODE" = "CONFLICT" ]; then
+  # Database sudah pernah dipakai run sebelumnya (< 14 hari): jeda masih aktif.
+  ok "audience outcome_pending dibatasi jeda dari run sebelumnya"
+else
+  bad "broadcast pengingat tracer study gagal ($TRACER_CODE)"
+fi
+TRACER_SECOND=$(req -X POST "$API/admin/broadcast" -H "$ADMIN_AUTH" \
+  -d '{"audience":"outcome_pending","message":"Pengingat kedua (harus ditolak)."}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "pengingat tracer study dibatasi 14 hari" "$TRACER_SECOND" "CONFLICT"
+
+say "Kompetensi (Fase 3)"
+DEWI_TOKEN=$(req -X POST "$API/auth/login" -d '{"email":"dewi.lestari@bumnacademy.id","password":"peserta123"}' | jq1 "['accessToken']")
+DEWI_AUTH="Authorization: Bearer $DEWI_TOKEN"
+[ -n "$DEWI_TOKEN" ] && ok "login akun kohort demo (untuk proksi tryout)" || bad "login akun kohort gagal"
+
+# 1. Profil kompetensi: kamus terisi, proksi tryout muncul, gap & catatan ada.
+PROFILE=$(req "$API/me/competencies?positionFamily=umum" -H "$DEWI_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d["assessments"]) >= 1, any(s["source"]=="tryout" for a in d["assessments"] for s in a["sources"]), len(d["gap"]) >= 1, len(d["notes"]) >= 1)')
+check "profil kompetensi (kamus/proksi tryout/gap/catatan)" "$PROFILE" "True True True True"
+
+# 2. Penilaian diri menambah sumber `self` (level tersimpan apa adanya).
+SELF=$(req -X POST "$API/me/competencies/self-assessment" -H "$DEWI_AUTH" \
+  -d '{"competencyCode":"integritas_akhlaq","level":4,"evidence":"Aktif dalam kegiatan kolaborasi tim."}' \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];a=[x for x in d["assessments"] if x["code"]=="integritas_akhlaq"][0];s=[x for x in a["sources"] if x["source"]=="self"];print(len(s)==1, s[0]["level"] if s else 0, a["bestLevel"] >= 4)')
+check "penilaian diri tersimpan (source self, level tersimpan)" "$SELF" "True 4 True"
+
+# 3. Kamus kompetensi admin: kompetensi + 5 level + pemetaan bank soal.
+FRAMEWORK=$(req "$API/admin/competencies" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d["competencies"]) >= 10, all(len(c["levels"])==5 for c in d["competencies"]), len(d["bankMap"]) >= 10)')
+check "kamus kompetensi (jumlah/level/pemetaan bank)" "$FRAMEWORK" "True True True"
+
+# 4. Matriks kompetensi: kolom, baris peserta, sel, dan penanda gap.
+MATRIX=$(req "$API/admin/competency-matrix?positionFamily=umum" -H "$ADMIN_AUTH" \
+  | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(len(d["competencies"]) >= 10, len(d["rows"]) >= 1, any(len(r["cells"]) >= 1 for r in d["rows"]), all("gap" in r for r in d["rows"]))')
+check "matriks kompetensi (kolom/baris/sel/gap)" "$MATRIX" "True True True True"
+
+# 5. Negatif: level di luar 1–5 ditolak.
+BAD_LEVEL=$(req -X POST "$API/me/competencies/self-assessment" -H "$DEWI_AUTH" \
+  -d '{"competencyCode":"integritas_akhlaq","level":9}' \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "level di luar 1–5 ditolak" "$BAD_LEVEL" "VALIDATION_ERROR"
+
+# 6. Otorisasi: kamus kompetensi hanya admin.
+UNAUTH_COMP=$(req "$API/admin/competencies" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "kamus kompetensi butuh token" "$UNAUTH_COMP" "UNAUTHORIZED"
+FORBIDDEN_COMP=$(req "$API/admin/competencies" -H "$AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "peserta tidak bisa membuka kamus kompetensi" "$FORBIDDEN_COMP" "FORBIDDEN"
+
 say "Validasi input"
 BAD=$(req -X POST "$API/auth/register" -d '{"name":"x","email":"bukan-email","password":"123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
 check "validasi menolak payload tidak valid" "$BAD" "VALIDATION_ERROR"

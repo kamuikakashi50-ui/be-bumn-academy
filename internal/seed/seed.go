@@ -99,6 +99,18 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err := seedKPITargets(ctx, db); err != nil {
 		return err
 	}
+	// Kamus kompetensi (Fase 3 langkah 1): kamus + deskriptor level, standar
+	// jabatan dasar, dan pemetaan kategori bank soal → kompetensi. Dibuat setelah
+	// bank soal tersedia agar kunci kategorinya konsisten.
+	if err := seedCompetencies(ctx, db); err != nil {
+		return err
+	}
+	if err := seedPositionRequirements(ctx, db); err != nil {
+		return err
+	}
+	if err := seedBankCompetencyMap(ctx, db); err != nil {
+		return err
+	}
 	if err := seedLiveSessions(ctx, db); err != nil {
 		return err
 	}
@@ -127,6 +139,9 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 		"percobaan_hr", len(hrAttemptDefs),
 		"tahapan_seleksi", len(selectionStageDefs),
 		"hasil_seleksi", len(outcomeDemoDefs),
+		"kompetensi", len(competencyDefs),
+		"standar_jabatan", len(positionRequirementDefs),
+		"pemetaan_bank", len(bankCompetencyDefs),
 	)
 	return nil
 }

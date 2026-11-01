@@ -454,6 +454,108 @@ Aturan kelas khusus:
   **bukan** prediksi kelulusan seleksi BUMN. Sertifikat peserta kelas menyimpan
   `cohort_id` + nama instansi pada metadata.
 
+### KPI kelulusan BUMN & tracer study (Fase 2)
+
+Fondasi Fase 2 ada di migrasi `000017_selection_outcomes`:
+
+| Tabel | Isi |
+| --- | --- |
+| `selection_stages` | referensi tahapan seleksi BUMN (administrasi → TKD/AKHLAK/TWK → B.Inggris/Learning Agility → TKB → wawancara → MCU → offering); `is_final` menandai tahap penentu kelulusan akhir |
+| `selection_outcomes` | hasil seleksi per peserta per tahap per instansi/tahun (`status` lolos/gagal/menunggu/mengundurkan_diri, `source` self_reported/admin_verified/document_verified, bukti, verifikator) |
+| `selection_outcome_audits` | jejak audit perubahan/verifikasi laporan |
+| `kpi_targets` | target KPI instansi/kelas per periode (metric + tahap) |
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| GET | `/outcomes/stages` | peserta | daftar tahapan seleksi aktif (untuk mengisi formulir) |
+| GET | `/outcomes/me` | peserta | laporan hasil seleksi sendiri + status verifikasi |
+| POST | `/outcomes` | peserta | lapor hasil seleksi (kombinasi tahun+tahap+instansi ganda → `CONFLICT`) |
+| PATCH/DELETE | `/outcomes/{id}` | peserta | perbaiki/batalkan laporan sendiri |
+| POST | `/outcomes/{id}/evidence` | peserta | tautkan bukti (JSON `evidenceUrl`) atau unggah berkas (multipart `file`) |
+| GET | `/admin/outcomes` | admin | daftar tinjauan (filter `year`/`sector`/`cohortId`/`program`/`stage`/`status`/`pending`/`search`) |
+| GET | `/admin/outcomes/{id}/audit` | admin | jejak audit satu laporan |
+| POST | `/admin/outcomes/{id}/verify` | admin | verifikasi bukti (`documentVerified` menaikkan ke `document_verified`) |
+| POST | `/admin/outcomes/{id}/reject` | admin | tolak bukti + alasan (status kembali `self_reported`) |
+| GET/PATCH | `/admin/selection-stages[/{key}]` | admin | daftar/ubah label, urutan, status aktif tahapan |
+| GET/POST | `/admin/kpi/targets` | admin | daftar/tambah target KPI |
+| PATCH/DELETE | `/admin/kpi/targets/{id}` | admin | ubah/hapus target |
+| GET | `/admin/kpi/bumn` | admin | dasbor KPI: ringkasan, capaian per tahap/klaster/kelas/program, efektivitas latihan, funnel, target vs realisasi, catatan |
+| GET | `/admin/kpi/bumn/export.csv` | admin | ekspor agregat (kolom `period`/`scope`/`group_key`/`group_label`/`stage_key`/`metric`/`level`/`passed`/`counted`/`value`/`n`) |
+| GET | `/admin/kpi/bumn/export.pdf` | admin | laporan siap kirim (PDF, `?download=1` memaksa unduhan) |
+| GET | `/insights/outcomes` | publik | ringkasan agregat hasil seleksi (tanpa identitas, hanya kelompok `n ≥ KPI_PUBLIC_MIN_GROUP_SIZE`, bawaan 10) |
+
+Aturan KPI:
+
+- **Dua tingkat kualitas data.** Setiap angka dikirim sebagai pasangan `verified`
+  (laporan terverifikasi) dan `reported` (semua laporan) — tidak ada angka gabungan,
+  dan setiap angka selalu menyertakan `n`.
+- **Pembagi nol → 0** (bukan `NaN`/`Inf`), pembulatan satu desimal.
+- **Peserta yang belum melapor** dihitung sebagai kelompok "belum ada laporan", bukan
+  gagal, sehingga tingkat kelulusan tidak tertekan artifisial.
+- **Funnel** memuat jumlah peserta tiap tahap (angka, bukan hanya persentase).
+- **`practiceEffectiveness`** membandingkan kebiasaan latihan peserta lolos vs tidak
+  lolos dan dinyatakan sebagai korelasi yang diamati, **bukan** sebab-akibat.
+- **Privasi.** Endpoint publik tidak memuat nama peserta dan menyembunyikan kelompok
+  dengan `n` di bawah ambang.
+- **Pengingat tracer study** memakai `POST /admin/broadcast` (audience
+  `outcome_pending`), dibatasi jeda **14 hari** antar kampanye yang sama (§4.5).
+  Jeda ditegakkan di level kampanye karena `broadcast_logs` mencatat jumlah
+  penerima, bukan per peserta.
+
+> Status: **Fase 2 selesai (backend + UI)** — migrasi `000017`, seed tahapan seleksi
+> (`11`) + laporan demo (`20`) + target KPI, seluruh endpoint di atas, dan dasbor UI
+> `/admin/kpi` (tab **Dasbor** + **Tinjauan laporan**), halaman peserta
+> `/dashboard/hasil-seleksi`, serta blok hasil seleksi di `/korporasi`. Verifikasi:
+> `scripts/smoke-test.sh` **114 lulus / 0 gagal** (14 pemeriksaan KPI baru) dan
+> `npm run verify:kpi-ui` **19/19** di repo front-end.
+
+### Pemetaan skill & kompetensi (migrasi 019, Fase 3 langkah 1–2)
+
+Fondasi pemetaan kompetensi (masukan #2) ada di migrasi `000019_competency`:
+
+| Tabel | Isi |
+| --- | --- |
+| `competencies` | kamus kompetensi (kode, nama, klaster teknis/manajerial/sosial-kultural, definisi, aktif) |
+| `competency_levels` | deskriptor perilaku level 1–5 per kompetensi |
+| `position_requirements` | level minimum tiap kompetensi untuk sebuah keluarga jabatan (+ klaster BUMN) |
+| `user_competencies` | penilaian per peserta per **sumber** (`tryout`/`self`/`asesor`/`manager`/`psikotes`) |
+| `bank_competency_map` | pemetaan kategori bank soal (Fase 0) → kompetensi |
+
+| Metode | Path | Akses | Keterangan |
+| --- | --- | --- | --- |
+| GET | `/me/competencies` | peserta | profil kompetensi + sumber penilaian + gap (`?positionFamily=`) |
+| POST | `/me/competencies/self-assessment` | peserta | isi penilaian diri satu kompetensi (level 1–5 + bukti) |
+| GET | `/admin/competencies` | admin | kamus lengkap: kompetensi + level + pemetaan bank soal |
+| POST | `/admin/competencies` | admin | tambah/ubah satu kompetensi |
+| POST | `/admin/competencies/{code}/levels` | admin | ubah deskriptor satu level |
+| GET/POST | `/admin/positions/{family}/requirements` | admin | daftar/tambah standar kompetensi jabatan |
+| DELETE | `/admin/positions/{family}/requirements/{code}` | admin | hapus satu standar jabatan (`?sector=`) |
+| GET | `/admin/competency-matrix` | admin | matriks peserta × kompetensi + penanda gap (filter `positionFamily`/`cohortId`/`program`/`search`) |
+
+Aturan kompetensi:
+
+- **Level dari tryout adalah proksi latihan**, bukan asesmen formal. Setiap level
+  selalu disertai label sumber (`Proksi dari latihan` / `Penilaian diri` /
+  `Asesmen formal` / …), dan `user_competencies.source` ditegakkan di database.
+- **Tiga sumber tidak dicampur**: satu baris per (peserta, kompetensi, sumber).
+  Level tertinggi lintas sumber dipakai untuk gap.
+- **Pemetaan otomatis dari bank soal.** Kategori subtes (mis. `Penalaran Numerik`)
+  dipetakan ke kompetensi lewat `bank_competency_map` (kunci bank soal; pencocokan
+  nama subtes memakai kunci **atau** labelnya, case-insensitive). Konversi skor →
+  level memakai ambang tetap yang tinggal di satu tempat
+  (`competencyLevelFromScore`): <50 → 2, 50–69 → 3, 70–84 → 4, ≥85 → 5.
+- **Peserta tanpa data** masuk kelompok "data belum cukup" (level 0), bukan nilai
+  nol yang terlihat seperti kelemahan. Gap tetap dihitung terhadap standar jabatan.
+- **Matriks** menampilkan level tertinggi per sel beserta jumlah gap; level tryout
+  diturunkan di memori (GET tidak menulis apa pun).
+
+> Status: **Fase 3 langkah 1–2 selesai** (kompetensi, tanpa menunggu mitra psikolog).
+> Verifikasi: `scripts/smoke-test.sh` **114 lulus / 0 gagal** (8 pemeriksaan
+> kompetensi baru), `npm run verify:kompetensi-ui` **14/14**, dan regresi
+> `verify:kpi-ui`/`verify:kohort-ui`/`verify:jalur-ui`/`verify:kelas-ui`/`verify:lisensi-ui`
+> tetap hijau. Langkah 3–8 (instrumen minat–bakat, fit score, 9-box, mitra psikolog
+> & konsultasi) menyusul.
+
 ### Jalur belajar & kuis pelajaran (Fase 1)
 
 | Metode | Path | Akses | Keterangan |

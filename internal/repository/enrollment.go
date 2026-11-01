@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"time"
 
 	"github.com/bumn-academy/be-bumn-academy/internal/models"
 	"github.com/bumn-academy/be-bumn-academy/internal/pkg/apperror"
@@ -122,6 +123,21 @@ func (r *EnrollmentRepository) UserIDsByAudience(ctx context.Context, audience s
 		err := r.db.WithContext(ctx).Model(&models.Order{}).
 			Where("status = ?", models.OrderPending).
 			Distinct().Pluck("user_id", &ids).Error
+		if err != nil {
+			return nil, apperror.Internal(err, "Gagal memuat penerima broadcast.")
+		}
+	case "outcome_pending":
+		// Peserta yang belum melaporkan hasil seleksi tahun berjalan — calon
+		// penerima pengingat tracer study (Fase 2 §4.5). Yang sudah melapor
+		// (tahap mana pun) dikecualikan agar pengingat tidak berulang.
+		year := time.Now().UTC().Year()
+		reported := r.db.WithContext(ctx).Model(&models.SelectionOutcome{}).
+			Select("user_id").
+			Where("selection_year = ?", year)
+		err := r.db.WithContext(ctx).Model(&models.User{}).
+			Where("role = ?", models.RolePeserta).
+			Where("id NOT IN (?)", reported).
+			Pluck("id", &ids).Error
 		if err != nil {
 			return nil, apperror.Internal(err, "Gagal memuat penerima broadcast.")
 		}
