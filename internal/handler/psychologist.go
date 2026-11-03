@@ -116,6 +116,27 @@ func (h *PsychologistHandler) MyAccessLogs(w http.ResponseWriter, r *http.Reques
 	response.OK(w, view)
 }
 
+// MyConsents menangani GET /me/consents.
+func (h *PsychologistHandler) MyConsents(w http.ResponseWriter, r *http.Request) {
+	view, err := h.deps.Psychologist.Consents(r.Context(), middleware.UserID(r.Context()))
+	if err != nil {
+		response.Fail(w, err)
+		return
+	}
+	response.OK(w, view)
+}
+
+// RevokeConsent menangani POST /me/consents/{purpose}/revoke.
+func (h *PsychologistHandler) RevokeConsent(w http.ResponseWriter, r *http.Request) {
+	view, err := h.deps.Psychologist.RevokeConsent(
+		r.Context(), middleware.UserID(r.Context()), pathParam(r, "purpose"))
+	if err != nil {
+		response.Fail(w, err)
+		return
+	}
+	response.OK(w, view)
+}
+
 /* ---------------------------------- admin --------------------------------- */
 
 // AdminPsychologists menangani GET /admin/psychologists.

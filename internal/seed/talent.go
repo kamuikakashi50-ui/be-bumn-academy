@@ -222,6 +222,14 @@ var businessLineDefs = []businessLineDef{
 
 /* ------------------------------ fungsi seed ------------------------------- */
 
+// talentItemID membentuk ID butir yang deterministik.
+//
+// Dipakai bersama oleh seed instrumen dan seed asesmen demo, sehingga keduanya
+// selalu menunjuk butir yang sama tanpa perlu membaca database lebih dulu.
+func talentItemID(instrumentID, dimension string, index int) string {
+	return stableID(fmt.Sprintf("talent-item/%s/%s/%d", instrumentID, dimension, index))
+}
+
 // seedTalentInstruments menyimpan instrumen, butir, dan norma demo (idempoten).
 //
 // Kolom `active` sengaja tidak ikut diperbarui agar admin bisa menonaktifkan
@@ -242,7 +250,7 @@ func seedTalentInstruments(ctx context.Context, db *gorm.DB) error {
 		})
 		for index, item := range def.Items {
 			items = append(items, models.TalentItem{
-				IDBase:       models.IDBase{ID: stableID(fmt.Sprintf("talent-item/%s/%s/%d", def.ID, item.Dimension, index))},
+				IDBase:       models.IDBase{ID: talentItemID(def.ID, item.Dimension, index)},
 				InstrumentID: def.ID,
 				Text:         item.Text,
 				Dimension:    item.Dimension,

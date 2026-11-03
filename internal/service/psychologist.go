@@ -561,6 +561,23 @@ func (s *PsychologistService) Book(ctx context.Context, userID string, in dto.Co
 	return s.MyConsultations(ctx, userID)
 }
 
+// consultationConsentRejection memutuskan apakah pemrosesan konsultasi boleh
+// dilanjutkan tanpa persetujuan baru (§4.5, §4.7).
+//
+// Murni supaya bisa diuji tanpa database. Mengembalikan pesan kosong bila boleh
+// lanjut. Persetujuan yang sudah ditarik (`revoked_at` terisi) atau belum ada
+// sama sekali dianggap belum ada persetujuan — penarikan persetujuan
+// menghentikan pemrosesan baru, tetapi tidak menghapus riwayatnya.
+func consultationConsentRejection(latest *models.ConsentRecord, granted bool) string {
+	if granted {
+		return ""
+	}
+	if latest == nil || latest.RevokedAt != nil {
+		return "Persetujuan pemrosesan data konsultasi diperlukan sebelum memesan slot."
+	}
+	return ""
+}
+
 // ensureConsultationConsent memastikan ada persetujuan aktif sebelum memproses.
 //
 // Mengembalikan id rekaman persetujuan yang dipakai. Bila peserta menyetujui pada
@@ -584,9 +601,8 @@ func (s *PsychologistService) ensureConsultationConsent(ctx context.Context, use
 	if err != nil {
 		return nil, err
 	}
-	if latest == nil || latest.RevokedAt != nil {
-		return nil, apperror.Validation(
-			"Persetujuan pemrosesan data konsultasi diperlukan sebelum memesan slot.", nil)
+	if reason := consultationConsentRejection(latest, granted); reason != "" {
+		return nil, apperror.Validation(reason, nil)
 	}
 	return &latest.ID, nil
 }
@@ -771,6 +787,76 @@ func (s *PsychologistService) accessLogs(ctx context.Context, subjectID string) 
 			"Akses peserta ke datanya sendiri tidak dicatat.",
 		},
 	}, nil
+}
+
+// Consents menampilkan riwayat persetujuan peserta beserta tujuan yang dikenali
+// sistem (§4.7, UU PDP) agar peserta bisa melihat & menarik persetujuannya.
+func (s *PsychologistService) Consents(ctx context.Context, userID string) (dto.ConsentListView, error) {
+	rows, err := s.repo.ListConsents(ctx, userID)
+	if err != nil {
+		return dto.ConsentListView{}, err
+	}
+	return s.consentListView(rows), nil
+}
+
+// RevokeConsent menarik persetujuan peserta untuk satu tujuan (§4.7).
+//
+// Penarikan menghentikan pemrosesan **baru** untuk tujuan itu (asesmen atau
+// konsultasi berikutnya wajib meminta persetujuan ulang), tetapi tidak menghapus
+// riwayat yang wajib disimpan sebagai bukti persetujuan.
+func (s *PsychologistService) RevokeConsent(ctx context.Context, userID, purpose string) (dto.ConsentListView, error) {
+	purpose = strings.TrimSpace(purpose)
+	if !models.ConsentPurposeValid(purpose) {
+		return dto.ConsentListView{}, apperror.Validation("Tujuan persetujuan tidak dikenal.", nil)
+	}
+	if _, err := s.repo.RevokeConsent(ctx, userID, purpose, s.now()); err != nil {
+		return dto.ConsentListView{}, err
+	}
+	rows, err := s.repo.ListConsents(ctx, userID)
+	if err != nil {
+		return dto.ConsentListView{}, err
+	}
+	return s.consentListView(rows), nil
+}
+
+// consentListView membentuk daftar persetujuan + status setiap tujuan.
+func (s *PsychologistService) consentListView(rows []models.ConsentRecord) dto.ConsentListView {
+	consents := make([]dto.ConsentView, 0, len(rows))
+	active := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		view := dto.ConsentView{
+			ID:           row.ID,
+			Purpose:      row.Purpose,
+			PurposeLabel: models.ConsentPurposeLabel(row.Purpose),
+			TextVersion:  row.TextVersion,
+			GrantedAt:    formatTime(row.GrantedAt),
+			Active:       row.RevokedAt == nil,
+		}
+		if row.RevokedAt != nil {
+			view.RevokedAt = formatTime(*row.RevokedAt)
+		} else {
+			active[row.Purpose] = true
+		}
+		consents = append(consents, view)
+	}
+
+	purposes := make([]dto.ConsentPurposeView, 0, len(models.ConsentPurposes))
+	for _, purpose := range models.ConsentPurposes {
+		purposes = append(purposes, dto.ConsentPurposeView{
+			Purpose: purpose,
+			Label:   models.ConsentPurposeLabel(purpose),
+			Active:  active[purpose],
+		})
+	}
+
+	return dto.ConsentListView{
+		Consents: consents,
+		Purposes: purposes,
+		Info: []string{
+			"Penarikan persetujuan menghentikan pemrosesan baru; riwayat yang wajib disimpan tetap tersimpan.",
+			"Asesmen atau konsultasi berikutnya akan meminta persetujuan ulang.",
+		},
+	}
 }
 
 // recordAccess mencatat satu akses data asesmen bila diperlukan (§4.6).

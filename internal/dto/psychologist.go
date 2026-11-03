@@ -157,6 +157,36 @@ type ConsultationRecapView struct {
 	Notes    []string                    `json:"notes"`
 }
 
+// ConsentView adalah satu rekaman persetujuan peserta (UU PDP, §4.7).
+type ConsentView struct {
+	ID           string `json:"id"`
+	Purpose      string `json:"purpose"`
+	PurposeLabel string `json:"purposeLabel"`
+	TextVersion  string `json:"textVersion"`
+	GrantedAt    string `json:"grantedAt"`
+	// RevokedAt terisi bila peserta sudah menarik persetujuan ini.
+	RevokedAt string `json:"revokedAt,omitempty"`
+	// Active menandai persetujuan masih berlaku (belum ditarik).
+	Active bool `json:"active"`
+}
+
+// ConsentListView adalah balasan `GET /me/consents`.
+type ConsentListView struct {
+	Consents []ConsentView `json:"consents"`
+	// Purposes berisi tujuan yang dikenali sistem beserta labelnya, dipakai
+	// klien untuk menampilkan tombol tarik persetujuan.
+	Purposes []ConsentPurposeView `json:"purposes"`
+	Info     []string             `json:"info"`
+}
+
+// ConsentPurposeView adalah satu tujuan persetujuan yang dikenali sistem.
+type ConsentPurposeView struct {
+	Purpose string `json:"purpose"`
+	Label   string `json:"label"`
+	// Active menandai peserta masih punya persetujuan aktif untuk tujuan ini.
+	Active bool `json:"active"`
+}
+
 /* --------------------------------- psikolog -------------------------------- */
 
 // ConsultationNoteInput adalah payload menulis catatan konsultasi (psikolog).

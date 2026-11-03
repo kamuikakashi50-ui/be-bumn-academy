@@ -311,11 +311,13 @@ func registerRoutes(r chi.Router, h routeHandlers) {
 		r.Get("/me/consultations", h.psychologist.MyConsultations)
 		r.Post("/me/consultations/{id}/cancel", h.psychologist.CancelConsultation)
 
-		// Hak peserta atas datanya (§2.9, §4.7): koreksi hasil, dan transparansi
-		// siapa yang pernah membuka data asesmennya.
+		// Hak peserta atas datanya (§2.9, §4.7): koreksi hasil, transparansi
+		// siapa yang pernah membuka data asesmennya, dan penarikan persetujuan.
 		r.Post("/me/assessments/{id}/dispute", h.psychologist.DisputeAssessment)
 		r.Get("/me/assessment-disputes", h.psychologist.MyDisputes)
 		r.Get("/me/assessment-access-logs", h.psychologist.MyAccessLogs)
+		r.Get("/me/consents", h.psychologist.MyConsents)
+		r.Post("/me/consents/{purpose}/revoke", h.psychologist.RevokeConsent)
 		// Mesin tryout.
 		r.Post("/tryouts/{id}/sessions", h.tryout.StartSession)
 		r.Get("/tryout-sessions/{id}", h.tryout.GetSession)

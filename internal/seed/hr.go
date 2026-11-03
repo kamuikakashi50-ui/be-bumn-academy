@@ -29,6 +29,10 @@ const hrCohortPassword = "peserta123"
 // Segmen (kolom `users.program`) sengaja beragam agar panel "Sebaran per
 // program" terisi; akun tanpa percobaan (Hana & Rian) membuat metrik "belum
 // pernah latihan" dan daftar pendampingan terisi.
+//
+// Tiga akun terakhir (Bimo, Clara, Dimas) sengaja punya skor tryout **rendah**
+// agar matriks 9-box di `/admin/talent` terisi juga di baris kinerja bawah —
+// tanpa mereka, kotak seperti "Perlu perbaikan menyeluruh" selalu kosong.
 var hrCohortUsers = []UserDef{
 	{Name: "Dewi Lestari", Email: "dewi.lestari@bumnacademy.id", Password: hrCohortPassword, Role: "peserta", Program: "Kelas Intensif BUMN"},
 	{Name: "Rangga Pratama", Email: "rangga.pratama@bumnacademy.id", Password: hrCohortPassword, Role: "peserta", Program: "Kelas Intensif BUMN"},
@@ -40,6 +44,9 @@ var hrCohortUsers = []UserDef{
 	{Name: "Yoga Pratama", Email: "yoga.pratama@bumnacademy.id", Password: hrCohortPassword, Role: "peserta", Program: "Alumni & Retaker"},
 	{Name: "Hana Maulida", Email: "hana.maulida@bumnacademy.id", Password: hrCohortPassword, Role: "peserta", Program: "Program Reguler"},
 	{Name: "Rian Kusuma", Email: "rian.kusuma@bumnacademy.id", Password: hrCohortPassword, Role: "peserta", Program: "Kelas Intensif BUMN"},
+	{Name: "Bimo Prasetyo", Email: "bimo.prasetyo@bumnacademy.id", Password: hrCohortPassword, Role: "peserta", Program: "Kelas Intensif BUMN"},
+	{Name: "Clara Anggraini", Email: "clara.anggraini@bumnacademy.id", Password: hrCohortPassword, Role: "peserta", Program: "Alumni & Retaker"},
+	{Name: "Dimas Prakoso", Email: "dimas.prakoso@bumnacademy.id", Password: hrCohortPassword, Role: "peserta", Program: "Kelas Korporasi"},
 }
 
 // hrAttemptDef adalah satu percobaan tryout demo pada kohort analitik HR.
@@ -106,6 +113,26 @@ var hrAttemptDefs = []hrAttemptDef{
 	{"yoga.pratama@bumnacademy.id", 90, 46, 62},
 	{"yoga.pratama@bumnacademy.id", 52, 50, 58},
 	{"yoga.pratama@bumnacademy.id", 28, 54, 55},
+
+	// Bimo, Clara, & Dimas — rata-rata skor di bawah ambang, sehingga baris
+	// kinerja bawah pada matriks 9-box terisi (bukan hanya peserta kuat).
+	{"bimo.prasetyo@bumnacademy.id", 155, 36, 63},
+	{"bimo.prasetyo@bumnacademy.id", 120, 39, 60},
+	{"bimo.prasetyo@bumnacademy.id", 84, 42, 57},
+	{"bimo.prasetyo@bumnacademy.id", 46, 44, 55},
+	{"bimo.prasetyo@bumnacademy.id", 18, 45, 54},
+
+	{"clara.anggraini@bumnacademy.id", 148, 38, 61},
+	{"clara.anggraini@bumnacademy.id", 110, 41, 58},
+	{"clara.anggraini@bumnacademy.id", 72, 43, 56},
+	{"clara.anggraini@bumnacademy.id", 34, 46, 53},
+	{"clara.anggraini@bumnacademy.id", 12, 47, 52},
+
+	{"dimas.prakoso@bumnacademy.id", 152, 34, 64},
+	{"dimas.prakoso@bumnacademy.id", 116, 38, 61},
+	{"dimas.prakoso@bumnacademy.id", 76, 42, 57},
+	{"dimas.prakoso@bumnacademy.id", 40, 44, 55},
+	{"dimas.prakoso@bumnacademy.id", 16, 46, 53},
 }
 
 // hrTryoutRotation adalah urutan paket tryout yang dipakai bergantian oleh

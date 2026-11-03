@@ -54,6 +54,20 @@ var psychologistDefs = []psychologistDef{
 		Notes:            "Mitra demo untuk alur konsultasi daring; izin praktik terverifikasi.",
 	},
 	{
+		Key:              "gita",
+		FullName:         "Gita Maharani, M.Psi., Psikolog",
+		Email:            "gita.maharani@mitrapsikologi.id",
+		Phone:            "081200000103",
+		SippNumber:       "SIPP-2024-00231",
+		StrNumber:        "STR-2024-771455",
+		Specs:            models.StringList{"Psikologi klinis", "Manajemen stres", "Resiliensi"},
+		Status:           models.PartnerTerverifikasi,
+		ValidDaysFromNow: 365,
+		// Tanpa akun login: mendemokan mitra yang tetap boleh ditugaskan & dibuka
+		// slotnya meski belum punya akun sendiri.
+		Notes: "Mitra terverifikasi tanpa akun; dipakai mendemokan penjadwalan lintas mitra.",
+	},
+	{
 		Key:        "rendra",
 		FullName:   "Rendra Wibowo, M.Psi.",
 		Email:      "rendra.wibowo@mitrapsikologi.id",
@@ -63,6 +77,18 @@ var psychologistDefs = []psychologistDef{
 		Status:     models.PartnerPending,
 		UserEmail:  "",
 		Notes:      "Menunggu verifikasi dokumen izin praktik.",
+	},
+	{
+		Key:              "hadi",
+		FullName:         "Hadi Nugroho, M.Psi.",
+		Email:            "hadi.nugroho@mitrapsikologi.id",
+		Phone:            "081200000104",
+		SippNumber:       "SIPP-2022-00088",
+		StrNumber:        "STR-2022-660311",
+		Specs:            models.StringList{"Asesmen kepribadian", "Coaching"},
+		Status:           models.PartnerNonaktif,
+		ValidDaysFromNow: -30,
+		Notes:            "Izin praktik sudah lewat masa berlaku; tidak boleh ditugaskan sampai diperbarui.",
 	},
 }
 
@@ -91,7 +117,8 @@ func seedPsychologists(ctx context.Context, db *gorm.DB, userIDs map[string]stri
 				partner.UserID = &id
 			}
 		}
-		if def.ValidDaysFromNow > 0 {
+		// Nilai negatif dipakai untuk mendemokan izin yang sudah lewat masa berlaku.
+		if def.ValidDaysFromNow != 0 {
 			valid := now.AddDate(0, 0, def.ValidDaysFromNow)
 			partner.ValidUntil = &valid
 		}
@@ -112,6 +139,10 @@ func seedPsychologists(ctx context.Context, db *gorm.DB, userIDs map[string]stri
 }
 
 // slotDef adalah satu slot konsultasi demo.
+//
+// `StartInHr` boleh negatif: slot lampau dipakai sesi yang sudah `selesai` atau
+// `tidak_hadir`, sehingga agenda psikolog & rekap admin tidak hanya berisi jadwal
+// mendatang.
 type slotDef struct {
 	Key       string
 	Partner   string
@@ -123,9 +154,17 @@ type slotDef struct {
 }
 
 var psychologistSlotDefs = []slotDef{
+	// Sesi lampau (riwayat).
+	{Key: "p14-0900", Partner: "anindya", StartInHr: -336, Duration: 60 * time.Minute, Mode: "online", Quota: 1, Channel: "https://meet.bumnacademy.id/psikolog/anindya-0900"},
+	{Key: "p7-1330", Partner: "anindya", StartInHr: -168, Duration: 45 * time.Minute, Mode: "online", Quota: 2, Channel: "https://meet.bumnacademy.id/psikolog/anindya-1330"},
+	{Key: "p3-1000", Partner: "gita", StartInHr: -72, Duration: 60 * time.Minute, Mode: "online", Quota: 1, Channel: "https://meet.bumnacademy.id/psikolog/gita-1000"},
+
+	// Jadwal mendatang yang masih bisa dipesan.
 	{Key: "d2-0900", Partner: "anindya", StartInHr: 48, Duration: 60 * time.Minute, Mode: "online", Quota: 3, Channel: "https://meet.bumnacademy.id/psikolog/anindya-0900"},
 	{Key: "d5-1300", Partner: "anindya", StartInHr: 120, Duration: 60 * time.Minute, Mode: "online", Quota: 2, Channel: "https://meet.bumnacademy.id/psikolog/anindya-1300"},
 	{Key: "d9-1000", Partner: "anindya", StartInHr: 216, Duration: 45 * time.Minute, Mode: "offline", Quota: 1, Channel: ""},
+	{Key: "d3-0900", Partner: "gita", StartInHr: 72, Duration: 60 * time.Minute, Mode: "online", Quota: 2, Channel: "https://meet.bumnacademy.id/psikolog/gita-0900"},
+	{Key: "d6-1500", Partner: "gita", StartInHr: 144, Duration: 45 * time.Minute, Mode: "online", Quota: 1, Channel: "https://meet.bumnacademy.id/psikolog/gita-1500"},
 }
 
 // seedPsychologistSlots menyimpan slot konsultasi demo (idempoten).
@@ -165,84 +204,318 @@ func seedPsychologistSlots(ctx context.Context, db *gorm.DB) error {
 	return nil
 }
 
-// seedPsychologistDemoSession membuat satu sesi konsultasi demo beserta catatan
-// yang dibagikan ke peserta (idempoten).
-//
-// Sesi ini membuat alur §4.5–§4.6 dapat dicoba tanpa langkah manual: peserta
-// punya riwayat konsultasi, psikolog punya agenda & peserta yang ditugaskan,
-// dan catatan `shared_to_user` terlihat di kedua sisi.
-func seedPsychologistDemoSession(ctx context.Context, db *gorm.DB, userIDs map[string]string) error {
-	participantID, ok := userIDs["siti.nurhaliza@bumnacademy.id"]
-	if !ok {
-		// Tanpa akun demo kohort, sesi demo dilewati (seed tetap berhasil).
-		return nil
-	}
-	partnerID := stableID("psychologist/anindya")
-	slotID := stableID("consultation-slot/d2-0900")
+/* --------------------------- sesi konsultasi demo -------------------------- */
 
-	consent := models.ConsentRecord{
-		IDBase:      models.IDBase{ID: stableID("consent/consultation/siti")},
-		UserID:      participantID,
-		Purpose:     models.ConsentPurposeConsultation,
-		TextVersion: "konsultasi-v1",
-		GrantedAt:   time.Now().UTC().AddDate(0, 0, -7),
+// consultationDemoDef adalah satu sesi konsultasi demo.
+//
+// Sesi sengaja mencakup **seluruh status** (`terpesan`, `selesai`, `batal`,
+// `tidak_hadir`) agar rekap pemanfaatan layanan admin dan riwayat peserta punya
+// isi sejak database baru.
+type consultationDemoDef struct {
+	Key         string
+	Slot        string
+	Participant string
+	Status      models.BookingStatus
+	Agenda      string
+	// CreatedDaysAgo menentukan waktu pemesanan (riwayat yang masuk akal).
+	CreatedDaysAgo int
+}
+
+var consultationDemoDefs = []consultationDemoDef{
+	{
+		Key: "siti-d2", Slot: "d2-0900", Participant: "siti.nurhaliza@bumnacademy.id",
+		Status: models.BookingTerpesan, CreatedDaysAgo: 3,
+		Agenda: "Membahas hasil asesmen minat–bakat dan rencana belajar lanjutan.",
+	},
+	{
+		Key: "dewi-p14", Slot: "p14-0900", Participant: "dewi.lestari@bumnacademy.id",
+		Status: models.BookingSelesai, CreatedDaysAgo: 16,
+		Agenda: "Menyusun strategi belajar untuk tryout lanjutan.",
+	},
+	{
+		Key: "rangga-p7", Slot: "p7-1330", Participant: "rangga.pratama@bumnacademy.id",
+		Status: models.BookingTidakHadir, CreatedDaysAgo: 10,
+		Agenda: "Membahas kesiapan menghadapi tahap seleksi berikutnya.",
+	},
+	{
+		Key: "fajar-p3", Slot: "p3-1000", Participant: "fajar.ramadhan@bumnacademy.id",
+		Status: models.BookingSelesai, CreatedDaysAgo: 6,
+		Agenda: "Pendampingan intensif penalaran numerik.",
+	},
+	{
+		Key: "intan-d3", Slot: "d3-0900", Participant: "intan.permata@bumnacademy.id",
+		Status: models.BookingTerpesan, CreatedDaysAgo: 2,
+		Agenda: "Membahas hasil asesmen dan kesiapan kerja.",
+	},
+	{
+		Key: "bayu-d6", Slot: "d6-1500", Participant: "bayu.saputra@bumnacademy.id",
+		Status: models.BookingTerpesan, CreatedDaysAgo: 1,
+		Agenda: "Diskusi penempatan lintas klaster BUMN.",
+	},
+	{
+		Key: "yoga-d9", Slot: "d9-1000", Participant: "yoga.pratama@bumnacademy.id",
+		Status: models.BookingBatal, CreatedDaysAgo: 4,
+		Agenda: "Dibatalkan peserta karena jadwal bentrok.",
+	},
+}
+
+// consultationNoteDef adalah satu catatan sesi demo.
+type consultationNoteDef struct {
+	Key            string
+	Booking        string
+	Author         string
+	Summary        string
+	Recommendation string
+	Visibility     models.NoteVisibility
+	// RetentionDaysFromNow negatif berarti masa retensi sudah lewat → isi
+	// catatan disamarkan otomatis (contoh perilaku §4.5).
+	RetentionDaysFromNow int
+}
+
+var consultationNoteDefs = []consultationNoteDef{
+	{
+		Key: "siti", Booking: "siti-d2", Author: "psikolog@bumnacademy.id",
+		Summary:        "Peserta kuat pada penalaran analitis; ketelitian perlu latihan bertahap.",
+		Recommendation: "Fokus modul penalaran numerik lanjutan dan simulasi berwaktu.",
+		Visibility:     models.NoteSharedToUser,
+	},
+	{
+		Key: "dewi-shared", Booking: "dewi-p14", Author: "psikolog@bumnacademy.id",
+		Summary:        "Konsistensi belajar baik dan hasil tryout naik stabil dalam tiga bulan terakhir.",
+		Recommendation: "Pertahankan ritme latihan; tambah simulasi berwaktu penuh.",
+		Visibility:     models.NoteSharedToUser,
+	},
+	{
+		Key: "dewi-private", Booking: "dewi-p14", Author: "psikolog@bumnacademy.id",
+		Summary:    "Catatan kerja psikolog: peserta sempat cemas sebelum sesi, sudah tenang setelah dijelaskan alur seleksi.",
+		Visibility: models.NotePrivate,
+	},
+	{
+		Key: "rangga", Booking: "rangga-p7", Author: "psikolog@bumnacademy.id",
+		Summary:    "Peserta tidak menghadiri sesi; perlu dihubungi ulang untuk menjadwalkan kembali.",
+		Visibility: models.NotePrivate,
+	},
+	{
+		Key: "fajar-hr", Booking: "fajar-p3", Author: "psikolog@bumnacademy.id",
+		Summary:        "Pendampingan numerik menunjukkan kemajuan; skor latihan naik setelah dua pekan.",
+		Recommendation: "Lanjutkan modul bertahap dan evaluasi tiap dua pekan.",
+		Visibility:     models.NoteSharedToHR,
+	},
+	{
+		Key: "bayu", Booking: "bayu-d6", Author: "psikolog@bumnacademy.id",
+		Summary:    "Catatan internal: peserta mempertimbangkan dua klaster berbeda, perlu pemetaan minat ulang.",
+		Visibility: models.NotePrivate,
+	},
+	{
+		Key: "siti-retensi", Booking: "siti-d2", Author: "psikolog@bumnacademy.id",
+		Summary:    "Catatan sesi awal sebelum peserta mengerjakan ulang instrumen.",
+		Visibility: models.NoteSharedToUser,
+		// Masa retensi sudah lewat → tampil sebagai "isi disamarkan".
+		RetentionDaysFromNow: -5,
+	},
+}
+
+/* ------------------------------ fungsi seed ------------------------------- */
+
+// seedConsultationDemo menyimpan sesi konsultasi demo, catatan berlapis, satu
+// permohonan koreksi, dan satu interpretasi instrumen (idempoten).
+//
+// Semua penulisan memakai `DO NOTHING` pada id yang deterministik, sehingga
+// keputusan nyata pengguna (mis. peserta membatalkan sesi demo lewat UI) tidak
+// dibatalkan saat seed dijalankan ulang.
+func seedConsultationDemo(ctx context.Context, db *gorm.DB, userIDs map[string]string) error {
+	now := time.Now().UTC()
+
+	// Persetujuan konsultasi per peserta yang punya sesi.
+	consentByParticipant := map[string]string{}
+	for _, def := range consultationDemoDefs {
+		participantID, ok := userIDs[def.Participant]
+		if !ok {
+			continue
+		}
+		if _, done := consentByParticipant[def.Participant]; done {
+			continue
+		}
+		consent := models.ConsentRecord{
+			IDBase:      models.IDBase{ID: stableID("consent/consultation/" + def.Participant)},
+			UserID:      participantID,
+			Purpose:     models.ConsentPurposeConsultation,
+			TextVersion: "konsultasi-v1",
+			GrantedAt:   now.AddDate(0, 0, -def.CreatedDaysAgo-2),
+		}
+		err := db.WithContext(ctx).Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoNothing: true,
+		}).Create(&consent).Error
+		if err != nil {
+			return fmt.Errorf("seed: gagal menyimpan persetujuan konsultasi %s: %w", def.Participant, err)
+		}
+		consentByParticipant[def.Participant] = consent.ID
+	}
+
+	bookings := make([]models.ConsultationBooking, 0, len(consultationDemoDefs))
+	bookingIDByKey := map[string]string{}
+	for _, def := range consultationDemoDefs {
+		participantID, ok := userIDs[def.Participant]
+		if !ok {
+			continue
+		}
+		bookingID := stableID("consultation-booking/" + def.Key)
+		bookingIDByKey[def.Key] = bookingID
+		createdAt := now.AddDate(0, 0, -def.CreatedDaysAgo)
+		booking := models.ConsultationBooking{
+			ID:        bookingID,
+			SlotID:    stableID("consultation-slot/" + def.Slot),
+			UserID:    participantID,
+			Status:    def.Status,
+			Agenda:    def.Agenda,
+			CreatedAt: createdAt,
+			UpdatedAt: createdAt,
+		}
+		if consentID, ok := consentByParticipant[def.Participant]; ok {
+			booking.ConsentID = &consentID
+		}
+		bookings = append(bookings, booking)
+	}
+
+	if len(bookings) > 0 {
+		err := db.WithContext(ctx).Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "id"}},
+			DoNothing: true,
+		}).Create(&bookings).Error
+		if err != nil {
+			return fmt.Errorf("seed: gagal menyimpan sesi konsultasi demo: %w", err)
+		}
+	}
+
+	if err := seedConsultationNotes(ctx, db, userIDs, bookingIDByKey, now); err != nil {
+		return err
+	}
+	if err := seedAssessmentDispute(ctx, db, userIDs, now); err != nil {
+		return err
+	}
+	if err := seedInstrumentInterpretation(ctx, db, userIDs, now); err != nil {
+		return err
+	}
+	return syncConsultationSlotBooked(ctx, db)
+}
+
+// seedConsultationNotes menyimpan catatan sesi demo.
+func seedConsultationNotes(
+	ctx context.Context,
+	db *gorm.DB,
+	userIDs map[string]string,
+	bookingIDByKey map[string]string,
+	now time.Time,
+) error {
+	notes := make([]models.ConsultationNote, 0, len(consultationNoteDefs))
+	for _, def := range consultationNoteDefs {
+		bookingID, ok := bookingIDByKey[def.Booking]
+		if !ok {
+			continue
+		}
+		authorID, ok := userIDs[def.Author]
+		if !ok {
+			// Mitra tanpa akun tidak bisa menjadi penulis catatan.
+			continue
+		}
+		note := models.ConsultationNote{
+			ID:             stableID("consultation-note/" + def.Key),
+			BookingID:      bookingID,
+			AuthorID:       authorID,
+			Summary:        def.Summary,
+			Recommendation: def.Recommendation,
+			Visibility:     def.Visibility,
+			CreatedAt:      now.AddDate(0, 0, -3),
+		}
+		if def.RetentionDaysFromNow != 0 {
+			retention := now.AddDate(0, 0, def.RetentionDaysFromNow)
+			note.RetentionUntil = &retention
+		}
+		notes = append(notes, note)
+	}
+	if len(notes) == 0 {
+		return nil
 	}
 	err := db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoNothing: true,
-	}).Create(&consent).Error
+	}).Create(&notes).Error
 	if err != nil {
-		return fmt.Errorf("seed: gagal menyimpan persetujuan konsultasi demo: %w", err)
+		return fmt.Errorf("seed: gagal menyimpan catatan konsultasi demo: %w", err)
 	}
+	return nil
+}
 
-	booking := models.ConsultationBooking{
-		ID:        stableID("consultation-booking/siti"),
-		SlotID:    slotID,
-		UserID:    participantID,
-		Status:    models.BookingTerpesan,
-		Agenda:    "Membahas hasil asesmen minat–bakat dan rencana belajar lanjutan.",
-		ConsentID: &consent.ID,
-		CreatedAt: time.Now().UTC().AddDate(0, 0, -3),
-		UpdatedAt: time.Now().UTC().AddDate(0, 0, -3),
+// seedAssessmentDispute menyimpan satu permohonan koreksi hasil asesmen.
+func seedAssessmentDispute(ctx context.Context, db *gorm.DB, userIDs map[string]string, now time.Time) error {
+	participantID, ok := userIDs["rangga.pratama@bumnacademy.id"]
+	if !ok {
+		return nil
 	}
-	// Konflik pada id (pemesanan demo sudah ada) diabaikan, bukan gagal.
-	err = db.WithContext(ctx).Clauses(clause.OnConflict{
+	dispute := models.AssessmentDispute{
+		ID:           stableID("assessment-dispute/rangga"),
+		AssessmentID: stableID("talent-assessment/rangga.pratama@bumnacademy.id/aptitude-v1"),
+		UserID:       participantID,
+		Reason:       "Hasil dimensi penalaran numerik saya rasa belum mencerminkan kemampuan saat mengerjakan instrumen.",
+		Status:       models.DisputeDitinjau,
+		CreatedAt:    now.AddDate(0, 0, -2),
+	}
+	if adminID, ok := userIDs["admin@bumnacademy.id"]; ok {
+		resolvedAt := now.AddDate(0, 0, -1)
+		dispute.ResolvedBy = &adminID
+		dispute.ResolvedAt = &resolvedAt
+		dispute.Resolution = "Sedang ditinjau bersama mitra psikolog; peserta dijadwalkan sesi ulang."
+	}
+	err := db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoNothing: true,
-	}).Create(&booking).Error
+	}).Create(&dispute).Error
 	if err != nil {
-		return fmt.Errorf("seed: gagal menyimpan pemesanan konsultasi demo: %w", err)
+		return fmt.Errorf("seed: gagal menyimpan permohonan koreksi demo: %w", err)
 	}
+	return nil
+}
 
-	authorID, ok := userIDs["psikolog@bumnacademy.id"]
-	if ok {
-		note := models.ConsultationNote{
-			ID:             stableID("consultation-note/siti"),
-			BookingID:      booking.ID,
-			AuthorID:       authorID,
-			Summary:        "Peserta kuat pada penalaran analitis; ketelitian perlu latihan bertahap.",
-			Recommendation: "Fokus modul penalaran numerik lanjutan dan simulasi berwaktu.",
-			Visibility:     models.NoteSharedToUser,
-			CreatedAt:      time.Now().UTC().AddDate(0, 0, -2),
-		}
-		err = db.WithContext(ctx).Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			DoNothing: true,
-		}).Create(&note).Error
-		if err != nil {
-			return fmt.Errorf("seed: gagal menyimpan catatan konsultasi demo: %w", err)
-		}
+// seedInstrumentInterpretation menyimpan satu catatan interpretasi instrumen.
+//
+// Interpretasi hanya boleh ditulis psikolog yang ditugaskan pada peserta (§2.6).
+func seedInstrumentInterpretation(ctx context.Context, db *gorm.DB, userIDs map[string]string, now time.Time) error {
+	subjectID, ok := userIDs["siti.nurhaliza@bumnacademy.id"]
+	if !ok {
+		return nil
 	}
+	interpretation := models.InstrumentInterpretation{
+		ID:             stableID("instrument-interpretation/siti-aptitude"),
+		InstrumentCode: "aptitude-v1",
+		PsychologistID: stableID("psychologist/anindya"),
+		SubjectID:      subjectID,
+		AssessmentID:   stringPtr(stableID("talent-assessment/siti.nurhaliza@bumnacademy.id/aptitude-v1")),
+		Interpretation: "Profil bakat menunjukkan kekuatan pada penalaran verbal; numerik masih dapat ditingkatkan dengan latihan bertahap.",
+		CreatedAt:      now.AddDate(0, 0, -2),
+	}
+	err := db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoNothing: true,
+	}).Create(&interpretation).Error
+	if err != nil {
+		return fmt.Errorf("seed: gagal menyimpan interpretasi instrumen demo: %w", err)
+	}
+	return nil
+}
 
-	// `booked` dihitung ulang dari pemesanan nyata agar selalu konsisten —
-	// termasuk bila peserta membatalkan pemesanan demo lewat UI.
-	err = db.WithContext(ctx).Exec(`
+// syncConsultationSlotBooked menyelaraskan `booked` setiap slot dengan jumlah
+// pemesanan nyata yang belum dibatalkan.
+//
+// Dihitung ulang (bukan angka tetap) supaya pembatalan oleh pengguna tidak
+// "dihidupkan kembali" oleh seed berikutnya.
+func syncConsultationSlotBooked(ctx context.Context, db *gorm.DB) error {
+	err := db.WithContext(ctx).Exec(`
 		UPDATE consultation_slots s
 		SET booked = (
 			SELECT COUNT(*) FROM consultation_bookings b
 			WHERE b.slot_id = s.id AND b.status <> ?
-		)
-		WHERE s.psychologist_id = ?`, models.BookingBatal, partnerID).Error
+		)`, models.BookingBatal).Error
 	if err != nil {
 		return fmt.Errorf("seed: gagal menyelaraskan kuota slot konsultasi: %w", err)
 	}

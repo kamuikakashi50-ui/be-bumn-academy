@@ -580,14 +580,17 @@ func (r *PsychologistRepository) ListInterpretations(ctx context.Context, subjec
 
 /* ------------------------------- persetujuan ------------------------------- */
 
-// LatestConsent mengambil rekaman persetujuan terakhir untuk satu tujuan.
+// LatestConsent mengambil rekaman persetujuan terakhir yang **masih berlaku**
+// untuk satu tujuan.
 //
 // Dipakai gerbang consent konsultasi: pemesanan ditolak bila peserta belum
-// menyetujui pemrosesan data psikologis (§4.5, §4.7).
+// menyetujui pemrosesan data psikologis (§4.5, §4.7). Persetujuan yang sudah
+// ditarik (`revoked_at` terisi) tidak dihitung sebagai persetujuan aktif,
+// sehingga penarikan persetujuan menghentikan pemrosesan baru.
 func (r *PsychologistRepository) LatestConsent(ctx context.Context, userID, purpose string) (*models.ConsentRecord, error) {
 	var item models.ConsentRecord
 	err := r.db.WithContext(ctx).Model(&models.ConsentRecord{}).
-		Where("user_id = ? AND purpose = ?", userID, purpose).
+		Where("user_id = ? AND purpose = ? AND revoked_at IS NULL", userID, purpose).
 		Order("granted_at DESC").First(&item).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -596,6 +599,34 @@ func (r *PsychologistRepository) LatestConsent(ctx context.Context, userID, purp
 		return nil, apperror.Internal(err, "Gagal memuat rekaman persetujuan.")
 	}
 	return &item, nil
+}
+
+// ListConsents mengambil seluruh rekaman persetujuan seorang peserta (termasuk
+// yang sudah ditarik) agar peserta bisa melihat riwayat persetujuannya (§4.7).
+func (r *PsychologistRepository) ListConsents(ctx context.Context, userID string) ([]models.ConsentRecord, error) {
+	var out []models.ConsentRecord
+	err := r.db.WithContext(ctx).Model(&models.ConsentRecord{}).
+		Where("user_id = ?", userID).
+		Order("granted_at DESC").Find(&out).Error
+	if err != nil {
+		return nil, apperror.Internal(err, "Gagal memuat riwayat persetujuan.")
+	}
+	return out, nil
+}
+
+// RevokeConsent menarik seluruh persetujuan aktif untuk satu tujuan.
+//
+// Mengembalikan jumlah rekaman yang ditarik. Riwayat yang sudah ditarik tidak
+// dihapus (kewajiban penyimpanan bukti persetujuan) — hanya `revoked_at` diisi
+// sehingga pemrosesan baru berhenti (§4.7).
+func (r *PsychologistRepository) RevokeConsent(ctx context.Context, userID, purpose string, at time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).Model(&models.ConsentRecord{}).
+		Where("user_id = ? AND purpose = ? AND revoked_at IS NULL", userID, purpose).
+		Update("revoked_at", at)
+	if result.Error != nil {
+		return 0, apperror.Internal(result.Error, "Gagal menarik persetujuan.")
+	}
+	return result.RowsAffected, nil
 }
 
 // CreateConsent mencatat persetujuan baru (dipakai alur konsultasi).

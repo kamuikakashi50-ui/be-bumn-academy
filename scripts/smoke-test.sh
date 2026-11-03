@@ -811,6 +811,40 @@ check "mitra baru berstatus pending & belum bisa ditugaskan" "$PENDING_NOT_ASSIG
 FORBIDDEN_RECAP=$(req "$API/admin/consultations" -H "$SITI_AUTH" | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
 check "peserta tidak bisa membuka rekap konsultasi admin" "$FORBIDDEN_RECAP" "FORBIDDEN"
 
+# 30. Penarikan persetujuan (UU PDP §4.7): peserta melihat & menarik
+#     persetujuannya, dan pemrosesan baru berhenti sampai disetujui ulang.
+CONSENTS=$(req "$API/me/consents" -H "$AUTH")
+CONSENT_CHECK=$(echo "$CONSENTS" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)["data"]
+print(len(d["purposes"]) == 4,
+      all(p["label"] for p in d["purposes"]),
+      any(p["purpose"] == "assessment" and p["active"] for p in d["purposes"]))
+')
+check "daftar persetujuan peserta (4 tujuan/label/aktif)" "$CONSENT_CHECK" "True True True"
+
+REVOKE=$(req -X POST "$API/me/consents/assessment/revoke" -H "$AUTH")
+REVOKE_CHECK=$(echo "$REVOKE" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)["data"]
+row = [c for c in d["consents"] if c["purpose"] == "assessment"][0]
+purpose = [p for p in d["purposes"] if p["purpose"] == "assessment"][0]
+print(row["active"] is False, bool(row.get("revokedAt")), purpose["active"] is False)
+')
+check "penarikan persetujuan tercatat (revokedAt/aktif=false)" "$REVOKE_CHECK" "True True True"
+
+REVOKED_START=$(req -X POST "$API/talent/assessments" -H "$AUTH" \
+  -d '{"instrumentCode":"riasec-v1"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "pemrosesan baru berhenti setelah persetujuan ditarik" "$REVOKED_START" "VALIDATION_ERROR"
+
+REGRANT=$(req -X POST "$API/talent/assessments" -H "$AUTH" \
+  -d '{"instrumentCode":"riasec-v1","consentGranted":true}' | jq1 "['status']")
+check "persetujuan ulang memulihkan pemrosesan" "$REGRANT" "berjalan"
+
+BAD_PURPOSE=$(req -X POST "$API/me/consents/kepribadian/revoke" -H "$AUTH" \
+  | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
+check "tujuan persetujuan tak dikenal ditolak" "$BAD_PURPOSE" "VALIDATION_ERROR"
+
 say "Validasi input"
 BAD=$(req -X POST "$API/auth/register" -d '{"name":"x","email":"bukan-email","password":"123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["error"]["code"])')
 check "validasi menolak payload tidak valid" "$BAD" "VALIDATION_ERROR"

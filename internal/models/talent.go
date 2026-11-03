@@ -69,6 +69,43 @@ const (
 	ConsentPurposeAggregatePublish = "aggregate_publish"
 )
 
+// ConsentPurposes adalah seluruh tujuan persetujuan yang dikenali sistem.
+//
+// Dipakai untuk memvalidasi permintaan penarikan persetujuan (§4.7) supaya
+// peserta tidak bisa "menarik" tujuan yang tidak pernah ada.
+var ConsentPurposes = []string{
+	ConsentPurposeAssessment,
+	ConsentPurposeConsultation,
+	ConsentPurposeHRSharing,
+	ConsentPurposeAggregatePublish,
+}
+
+// ConsentPurposeValid menandai tujuan persetujuan yang dikenali sistem.
+func ConsentPurposeValid(purpose string) bool {
+	for _, item := range ConsentPurposes {
+		if item == purpose {
+			return true
+		}
+	}
+	return false
+}
+
+// ConsentPurposeLabel mengembalikan label tujuan persetujuan siap tampil.
+func ConsentPurposeLabel(purpose string) string {
+	switch purpose {
+	case ConsentPurposeAssessment:
+		return "Pemrosesan data asesmen minat–bakat"
+	case ConsentPurposeConsultation:
+		return "Pemrosesan data konsultasi psikolog"
+	case ConsentPurposeHRSharing:
+		return "Berbagi ringkasan hasil ke instansi (HR)"
+	case ConsentPurposeAggregatePublish:
+		return "Publikasi angka agregat (tanpa identitas)"
+	default:
+		return purpose
+	}
+}
+
 // TalentInstrument adalah definisi satu instrumen minat–bakat.
 type TalentInstrument struct {
 	ID      string `gorm:"column:id;primaryKey" json:"id"`

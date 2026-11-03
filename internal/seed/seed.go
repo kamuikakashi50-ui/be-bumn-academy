@@ -119,6 +119,11 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err := seedBusinessLines(ctx, db); err != nil {
 		return err
 	}
+	// Asesmen minat–bakat demo: agar peta talenta, matriks 9-box, dan halaman
+	// peserta sudah berisi data pada database baru (tanpa langkah manual).
+	if err := seedTalentAssessments(ctx, db, userIDs); err != nil {
+		return err
+	}
 	// Psikolog & konsultasi (Fase 3 langkah 6–7): mitra demo (satu terverifikasi,
 	// satu menunggu), slot konsultasi, dan satu sesi demo beserta catatannya.
 	if err := seedPsychologists(ctx, db, userIDs); err != nil {
@@ -127,7 +132,7 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 	if err := seedPsychologistSlots(ctx, db); err != nil {
 		return err
 	}
-	if err := seedPsychologistDemoSession(ctx, db, userIDs); err != nil {
+	if err := seedConsultationDemo(ctx, db, userIDs); err != nil {
 		return err
 	}
 	if err := seedLiveSessions(ctx, db); err != nil {
@@ -164,8 +169,11 @@ func Run(ctx context.Context, db *gorm.DB, cfg *config.Config) error {
 		"instrumen_talenta", len(talentInstruments),
 		"butir_instrumen", len(riasecItems)+len(aptitudeItems),
 		"lini_bisnis", len(businessLineDefs),
+		"asesmen_talenta", len(talentProfileDefs)*len(talentInstruments),
 		"mitra_psikolog", len(psychologistDefs),
 		"slot_konsultasi", len(psychologistSlotDefs),
+		"sesi_konsultasi", len(consultationDemoDefs),
+		"catatan_konsultasi", len(consultationNoteDefs),
 	)
 	return nil
 }

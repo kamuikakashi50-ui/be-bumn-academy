@@ -175,6 +175,38 @@ func talentMaxRawByDimension(items []models.TalentItem) map[string]float64 {
 	return out
 }
 
+/* ------------------------- helper murni (diekspor) ------------------------- */
+
+// Helper di bawah ini mengekspor perhitungan murni talent mapping agar **seed
+// demo** memakai rumus yang sama dengan runtime. Tanpa ini, seed harus menyalin
+// rumusnya sendiri dan dua implementasi itu bisa menyimpang diam-diam.
+
+// TalentRawScores menghitung skor mentah per dimensi dari jawaban peserta.
+func TalentRawScores(items []models.TalentItem, answers map[string]int) map[string]float64 {
+	return talentRawScores(items, answers)
+}
+
+// TalentMaxRawByDimension menghitung skor mentah maksimum tiap dimensi
+// (dipakai sebagai cadangan saat norma sebuah dimensi belum tersedia).
+func TalentMaxRawByDimension(items []models.TalentItem) map[string]float64 {
+	return talentMaxRawByDimension(items)
+}
+
+// TalentPercentile mengubah skor mentah menjadi persentil terhadap norma.
+func TalentPercentile(raw, mean, sd float64) float64 {
+	return talentPercentile(raw, mean, sd)
+}
+
+// TalentClampPercentile menjaga persentil tetap di rentang 0–100.
+func TalentClampPercentile(value float64) float64 {
+	return talentClampPercentile(value)
+}
+
+// TalentFitScore menghitung skor kecocokan lini bisnis dari persentil dimensi.
+func TalentFitScore(percentiles, weights map[string]float64) (float64, bool) {
+	return talentFitScore(percentiles, weights)
+}
+
 /* ------------------------------- peserta ---------------------------------- */
 
 // Instruments mengembalikan instrumen aktif beserta status pengerjaan peserta.
@@ -269,6 +301,23 @@ func (s *TalentService) StartAssessment(ctx context.Context, userID string, in d
 	return s.assessmentView(ctx, *instrument, *assessment)
 }
 
+// assessmentConsentRejection memutuskan apakah pemrosesan asesmen boleh
+// dilanjutkan tanpa persetujuan baru (§2.9, §4.7).
+//
+// Murni supaya bisa diuji tanpa database. Mengembalikan pesan kosong bila boleh
+// lanjut. Persetujuan yang sudah ditarik tidak dihitung aktif — peserta harus
+// menyetujui ulang sebelum memulai asesmen baru, sementara riwayatnya tetap
+// tersimpan.
+func assessmentConsentRejection(existing *models.ConsentRecord, granted bool) string {
+	if existing != nil && existing.RevokedAt == nil {
+		return ""
+	}
+	if granted {
+		return ""
+	}
+	return "Persetujuan pemrosesan data asesmen wajib diberikan sebelum memulai."
+}
+
 // ensureAssessmentConsent memastikan peserta punya persetujuan pemrosesan data
 // asesmen (UU PDP); persetujuan yang sudah ada dipakai ulang.
 func (s *TalentService) ensureAssessmentConsent(ctx context.Context, userID string, granted bool) (*string, error) {
@@ -276,12 +325,11 @@ func (s *TalentService) ensureAssessmentConsent(ctx context.Context, userID stri
 	if err != nil {
 		return nil, err
 	}
-	if existing != nil {
-		return &existing.ID, nil
+	if reason := assessmentConsentRejection(existing, granted); reason != "" {
+		return nil, apperror.Validation(reason, nil)
 	}
-	if !granted {
-		return nil, apperror.Validation(
-			"Persetujuan pemrosesan data asesmen wajib diberikan sebelum memulai.", nil)
+	if existing != nil && existing.RevokedAt == nil {
+		return &existing.ID, nil
 	}
 
 	record := models.ConsentRecord{
@@ -994,6 +1042,23 @@ func nineBoxPotential(scores []models.TalentScore) (float64, bool) {
 		return 0, false
 	}
 	return math.Round(total/float64(count)*10) / 10, true
+}
+
+// NineBoxBand mengubah skor 0–100 menjadi band matriks 9-box
+// (rendah/sedang/tinggi) memakai ambang yang sama dengan runtime.
+func NineBoxBand(score float64) string {
+	return nineBoxBand(score)
+}
+
+// NineBoxQuadrantFor mengembalikan kunci kotak matriks 9-box dari pasangan band.
+func NineBoxQuadrantFor(performanceBand, potentialBand string) string {
+	return nineBoxQuadrantFor(performanceBand, potentialBand).Key
+}
+
+// NineBoxPotential menghitung rata-rata persentil dimensi potensi dari daftar
+// skor dimensi seorang peserta.
+func NineBoxPotential(scores []models.TalentScore) (float64, bool) {
+	return nineBoxPotential(scores)
 }
 
 // Mapping membentuk heatmap peserta × lini bisnis untuk admin.

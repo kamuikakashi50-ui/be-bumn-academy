@@ -156,10 +156,12 @@ MP4 H.264 1280×720 + poster) sehingga peserta benar-benar memutar video asli.
 Direktori media dilayani pada `/api/v1/media/*` (lihat `MEDIA_DIR`).
 
 Selain katalog, `internal/seed/hr.go` menyiapkan **kohort demo analitik HR** agar
-dasbor `/admin/hr` langsung penuh data: 10 peserta lintas segmen program
-(`users.program`), 36 percobaan tryout tersebar dalam enam bulan beserta rincian
-skor per subtes, dan 51 baris progres ruang kelas. Seluruh akun kohort memakai
-kata sandi `peserta123` (mis. `dewi.lestari@bumnacademy.id`). Akun inti
+dasbor `/admin/hr` langsung penuh data: 13 peserta lintas segmen program
+(`users.program`), 51 percobaan tryout tersebar dalam enam bulan beserta rincian
+skor per subtes, dan progres ruang kelas. Seluruh akun kohort memakai
+kata sandi `peserta123` (mis. `dewi.lestari@bumnacademy.id`). Tiga akun di
+antaranya (`bimo.prasetyo@`, `clara.anggraini@`, `dimas.prakoso@`) punya skor
+tryout **rendah** agar baris kinerja bawah matriks 9-box juga terisi. Akun inti
 `peserta@bumnacademy.id` **sengaja tidak** diberi percobaan/progres agar skrip
 verifikasi (`smoke-test.sh`, `verify-integration.sh`) tetap berlaku.
 
@@ -188,12 +190,17 @@ hilang.
 | `learning.go` | jadwal kelas live (disimpan sebagai selisih jam dari waktu seed) & 6 rekaman kelas |
 | `learning_path.go` | jalur belajar & kuis demo Fase 1 (langkah jalur + susunan soal kuis) |
 | `cohort.go` | kelas khusus demo Fase 1: instansi, kelas aktif, kurikulum modul, anggota/mentor, kode undangan |
-| `hr.go` | kohort demo analitik HR: akun peserta lintas segmen, riwayat percobaan tryout (dengan rincian subtes), akses produk, dan progres ruang kelas |
+| `hr.go` | kohort demo analitik HR: akun peserta lintas segmen (termasuk tiga peserta berskor rendah agar baris kinerja bawah 9-box terisi), riwayat percobaan tryout (dengan rincian subtes), akses produk, dan progres ruang kelas |
+| `talent.go` | instrumen minat–bakat (RIASEC & bakat dasar), butir, norma demo, dan bobot 6 lini bisnis |
+| `talent_demo.go` | **profil jawaban 14 peserta** yang menghasilkan persentil & skor kecocokan nyata (memakai helper service yang sama dengan runtime), sehingga peta talenta, matriks 9-box, dan halaman peserta terisi sejak database baru |
+| `psychologist.go` | 4 mitra psikolog (terverifikasi/pending/nonaktif + izin lewat), 8 slot konsultasi (lampau & mendatang), 7 sesi lintas status, 7 catatan berlapis visibilitas, satu permohonan koreksi, dan satu interpretasi instrumen |
 | `data.json` | program, kategori materi, produk, metode bayar, voucher, 45 definisi soal (digandakan per tryout saat disisipkan), 5 paket tryout, akun demo, enrollment demo |
 | `classroom.json` | 8 modul & 15 materi (6 video dari `media/lessons/` + 9 e-book yang dirender jadi PDF saat dibuka) |
 | `seed_test.go` | uji kontrak data: jumlah data, id unik, bank soal tiap subtes, produk wajib tiap paket, keberadaan berkas media, determinisme `stableID` |
 | `hr_test.go` | uji kontrak kohort analitik HR: sebaran program, akun kohort tidak menimpa akun inti, rentang enam bulan, peserta tanpa percobaan, validitas rotasi tryout & pola progres |
 | `cohort_test.go` | uji kontrak kelas khusus demo: modul kurikulum ada di `classroom.json`, akun anggota/mentor benar-benar dibuat, minimal satu modul wajib, format kode undangan (8 karakter, tanpa karakter ambigu) |
+| `talent_demo_test.go` | uji kontrak profil talenta demo: akun ada, nilai jawaban 1–5, dan **seluruh sembilan kotak 9-box benar-benar terisi** (termasuk satu peserta "data belum cukup") |
+| `psychologist_test.go` | uji kontrak mitra & konsultasi demo: ketiga status mitra ada, slot lampau & mendatang tersedia, keempat status pemesanan terwakili, ketiga tingkat visibilitas catatan ada, dan tidak ada pemesanan aktif ganda per (slot, peserta) |
 
 Seed dipanggil otomatis saat start (`SEED_ON_START=true`) maupun manual lewat
 `make seed` / `go run ./cmd/seed`. Seluruh operasi idempoten (upsert), sehingga
@@ -334,15 +341,15 @@ Aturan kuota, kedaluwarsa kode undangan, dan masa akses ada di model murni
 
 ### Kohort demo analitik HR
 
-`internal/seed/hr.go` menambahkan 10 akun peserta (kata sandi `peserta123`) untuk
+`internal/seed/hr.go` menambahkan 13 akun peserta (kata sandi `peserta123`) untuk
 mengisi dasbor `/admin/hr` dengan data nyata:
 
 | Segmen (`users.program`) | Akun |
 | --- | --- |
-| Kelas Intensif BUMN | `dewi.lestari@`, `rangga.pratama@`, `rian.kusuma@` |
+| Kelas Intensif BUMN | `dewi.lestari@`, `rangga.pratama@`, `rian.kusuma@`, `bimo.prasetyo@` |
 | Program Reguler | `siti.nurhaliza@`, `bayu.saputra@`, `hana.maulida@` |
-| Kelas Korporasi | `intan.permata@`, `fajar.ramadhan@` |
-| Alumni & Retaker | `nadia.safira@`, `yoga.pratama@` |
+| Kelas Korporasi | `intan.permata@`, `fajar.ramadhan@`, `dimas.prakoso@` |
+| Alumni & Retaker | `nadia.safira@`, `yoga.pratama@`, `clara.anggraini@` |
 
 (semua beralamat `@bumnacademy.id`). Tiap akun mendapat akses seluruh produk demo,
 lalu sebagian diberi 3–6 percobaan tryout yang tersebar 4–170 hari ke belakang
@@ -612,7 +619,8 @@ Aturan talent mapping:
 > **131 lulus / 0 gagal** (10 pemeriksaan talent mapping + 7 pemeriksaan 9-box),
 > `npm run verify:talent-ui` **13/13**, `npm run verify:ninebox-ui` **11/11**, dan
 > seluruh regresi UI fase sebelumnya tetap hijau. Seed demo:
-> 2 instrumen (36 butir), 10 norma, 6 profil lini bisnis.
+> 2 instrumen (36 butir), 10 norma, 6 profil lini bisnis, dan **hasil asesmen 14
+> peserta** (minat + bakat) sehingga peta talenta & matriks 9-box terisi penuh.
 
 ### Matriks 9-box (Fase 3 langkah 5)
 
@@ -666,6 +674,8 @@ Peran pengguna diperluas menjadi `peserta`, `admin`, `psikolog`, `admin_instansi
 | POST | `/me/assessments/{id}/dispute` | peserta | ajukan koreksi hasil asesmen |
 | GET | `/me/assessment-disputes` | peserta | daftar permohonan koreksi sendiri |
 | GET | `/me/assessment-access-logs` | peserta | siapa saja yang membuka data asesmennya |
+| GET | `/me/consents` | peserta | riwayat persetujuan + status tiap tujuan (UU PDP) |
+| POST | `/me/consents/{purpose}/revoke` | peserta | tarik persetujuan satu tujuan (menghentikan pemrosesan baru) |
 | GET/POST | `/admin/psychologists` | admin | registri mitra + tambah/ubah |
 | POST | `/admin/psychologists/{id}/verify` | admin | verifikasi izin praktik (SIPP/SIPPK/STR + masa berlaku) |
 | GET | `/admin/psychologists/{id}/slots` | admin | seluruh slot mitra |
@@ -691,6 +701,10 @@ Aturan mitra psikolog & konsultasi:
   memesan ulang slot yang sama.
 - **Persetujuan wajib.** Memesan tanpa persetujuan `consultation` → `VALIDATION_ERROR`;
   persetujuan dicatat di `consent_records` dan dipakai ulang selama belum dicabut.
+- **Persetujuan bisa ditarik.** Peserta melihat & menarik persetujuannya lewat
+  `/me/consents` (panel **Persetujuan saya** di `/dashboard/konsultasi`). Penarikan
+  mengisi `revoked_at` sehingga asesmen/konsultasi berikutnya wajib meminta
+  persetujuan ulang, tanpa menghapus riwayat yang wajib disimpan (§4.7).
 - **Pembatalan mandiri ≥ 12 jam.** Setelah itu pemesanan ditandai `tidak_hadir`
   agar rekap pemanfaatan layanan tetap jujur.
 - **Catatan berlapis visibilitas.** `private` hanya penulis; `shared_to_user` juga
@@ -706,9 +720,17 @@ Aturan mitra psikolog & konsultasi:
 
 > Status: **Fase 3 langkah 6–7 selesai.** Verifikasi: `go test ./...` hijau,
 > smoke test **148/148** (18 pemeriksaan baru), `npm run verify:psikolog-ui` **27/27**
-> (re-runnable), dan rollback migrasi `000020` diverifikasi. Seed demo: 2 mitra
-> (satu terverifikasi + akun `psikolog@bumnacademy.id`), 3 slot, dan satu sesi
-> konsultasi beserta catatannya.
+> (re-runnable), dan rollback migrasi `000020` diverifikasi. Seed demo: 4 mitra
+> (terverifikasi/pending/nonaktif + izin lewat), 8 slot konsultasi (lampau &
+> mendatang), 7 sesi lintas status beserta 7 catatan berlapis visibilitas, satu
+> permohonan koreksi, dan satu interpretasi instrumen.
+>
+> **Tindak lanjut MVP (3 November 2026):** penarikan persetujuan peserta
+> (`GET /me/consents`, `POST /me/consents/{purpose}/revoke`) ditambahkan agar hak
+> peserta pada §4.7 benar-benar bisa dijalankan dari UI. Verifikasi ulang:
+> `go test ./...` hijau (termasuk `internal/service/consent_test.go`), smoke test
+> **153/153** (5 pemeriksaan consent baru), dan `npm run verify:psikolog-ui`
+> **30/30** (3 pemeriksaan panel persetujuan baru).
 
 
 ### Jalur belajar & kuis pelajaran (Fase 1)
